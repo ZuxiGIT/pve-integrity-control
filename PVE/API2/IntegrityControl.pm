@@ -3,26 +3,26 @@ package PVE::API2::IntegrityControl;
 use strict;
 use warnings;
 
-use PVE::Storage;
 use PVE::QemuConfig;
-use PVE::QemuServer::Drive;
-use PVE::IntegrityControlConfig;
+use PVE::Storage;
+use PVE::Tools qw(extract_param);
 use Sys::Guestfs;
 
-use PVE::RESTHandler;
+use PVE::API2::Qemu;
 
+use PVE::RESTHandler;
 use base qw(PVE::RESTHandler);
 
 __PACKAGE__->register_method ({
-    name => 'test',
-    path => '{vmid}',
+    name => 'ic_status',
+    path => '{vmid}/status/current',
     method => 'GET',
-    description => 'Test method',
+    description => 'Check whether integrity control is enabled for VM',
     parameters => {
         additionalProperties => 0,
         properties => {
-            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
             node => PVE::JSONSchema::get_standard_option('pve-node'),
+            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
         },
     },
     returns => {
@@ -31,9 +31,61 @@ __PACKAGE__->register_method ({
     code => sub {
         my ($param) = @_;
 
-        return "code sub was called with params: $param->{node}, $param->{vmid}";
+        my $node = extract_param($param, 'node');
+        my $vmid = extract_param($param, 'vmid');
+
+        my $conf = PVE::QemuConfig->load_current_config($vmid, 1);
+
+        if ($conf->{integrity_control}) {
+            return "enabled";
+        } else {
+            return "disabled";
+        }
     }
 });
+
+__PACKAGE__->register_method ({
+    name => 'ic_enable',
+    path => '{vmid}/status/enable',
+    method => 'PUT',
+    description => 'Enable integrity control for VM',
+    parameters => {
+        additionalProperties => 0,
+        properties => {
+            node => PVE::JSONSchema::get_standard_option('pve-node'),
+            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
+        },
+    },
+    returns => {
+        type => 'null'
+    },
+    code => sub {
+        my ($param) = @_;
+        return PVE::API2::Qemu->update_vm({%$param, integrity_control => 1});
+    }
+});
+
+__PACKAGE__->register_method ({
+    name => 'ic_disable',
+    path => '{vmid}/status/disable',
+    method => 'PUT',
+    description => 'Enable integrity control for VM',
+    parameters => {
+        additionalProperties => 0,
+        properties => {
+            node => PVE::JSONSchema::get_standard_option('pve-node'),
+            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
+        },
+    },
+    returns => {
+        type => 'null'
+    },
+    code => sub {
+        my ($param) = @_;
+        return PVE::API2::Qemu->update_vm({%$param, integrity_control => 0});
+    }
+});
+
 
 sub fill_absent_hashes {
     my ($vmid, $conf, $ic_conf_str) = @_;

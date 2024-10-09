@@ -2,11 +2,9 @@ package PVE::CLI::ic;
 
 use strict;
 use warnings;
-use DDP;
 
 use PVE::INotify;
-use PVE::QemuServer;
-use PVE::JSONSchema;
+use PVE::RPCEnvironment;
 
 use PVE::API2::IntegrityControl;
 
@@ -21,11 +19,12 @@ sub setup_environment {
 }
 
 our $cmddef = {
-    test=> [ 'PVE::API2::IntegrityControl' , 'test', ['vmid'], { %node }, sub {
-        my $res = shift;
-        print "Got string: \"$res\"\n";
-    }
-    ],
+    status => ['PVE::API2::IntegrityControl', 'ic_status', ['vmid'], { %node }, sub {
+        my $status = shift;
+        print "status: $status\n";
+    }],
+    enable => ['PVE::API2::IntegrityControl', 'ic_enable', ['vmid'], { %node }],
+    disable => ['PVE::API2::IntegrityControl', 'ic_disable', ['vmid'], { %node }],
 };
 
 1;
