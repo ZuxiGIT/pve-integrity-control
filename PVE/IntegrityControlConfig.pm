@@ -21,9 +21,9 @@ sub parse_ic_files_locations {
     return $res;
 }
 
-sub parse_ic_config_str {
-    my $raw = shift;
-    return PVE::JSONSchema::parse_property_string('pve-qm-integrity-control', $raw);
+sub parse_ic_config {
+    my $raw_str = shift;
+    return PVE::JSONSchema::parse_property_string('pve-qm-integrity-control', $raw_str);
 }
 
 sub update_ic_config {

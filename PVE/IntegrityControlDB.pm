@@ -19,30 +19,28 @@ use Data::Dumper;
 use base qw(PVE::AbstractConfig);
 
 my $nodename = PVE::INotify::nodename();
-mkdir "/etc/pve/nodes/$nodename/qemu-server/integrity-control/";
 
 PVE::Cluster::cfs_register_file(
     '/qemu-server/integrity-control/',
-    \&parse_ic_filedb,
+    \&read_ic_filedb,
     \&write_ic_filedb
 );
 
-# path where to store files' hashes
-sub cfs_config_path {
-    my ($class, $vmid, $node) = @_;
+# path where to store vm files' hashes, a.k.a. integrity control system filedb path
+sub ic_filedb_path {
+    my ($class, $vmid) = @_;
 
-    $node = $nodename if !$node;
-    return "nodes/$node/qemu-server/integrity-control/$vmid.conf";
+    return "nodes/$nodename/qemu-server/$vmid.ic.db";
 }
 
-sub parse_ic_filedb {
+sub read_ic_filedb {
     my ($filename, $raw, $strict) = @_;
 
     return if !defined($raw);
 
     my $res = {};
 
-    $filename =~ m|/qemu-server/integrity-control/(\d+)\.conf$|
+    $filename =~ m|/qemu-server/(\d+)\.ic\.db$|
 	|| die "got strange filename '$filename'";
 
     my $vmid = $1;
@@ -68,21 +66,21 @@ sub write_ic_filedb {
     return $raw;
 }
 
-sub create_db {
+sub create_ic_filedb {
     my ($class, $vmid, $node) = @_;
 
-    my $cfspath = $class->cfs_config_path($vmid);
+    my $cfspath = $class->ic_filedb_path($vmid);
 
 	$class->write_config($vmid, {});
 }
 
-sub load_db {
+sub load_ic_config{
     my $vmid = shift;
 
     return PVE::IntegrityControlDB->load_config($vmid);
 }
 
-sub write_db {
+sub write_ic_config{
     my ($vmid, $db) = @_;
 
     PVE::IntegrityControlDB->write_config($vmid, $db);

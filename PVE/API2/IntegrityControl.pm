@@ -1,12 +1,39 @@
-package PVE::IntegrityControl;
+package PVE::API2::IntegrityControl;
 
 use strict;
 use warnings;
+
 use PVE::Storage;
 use PVE::QemuConfig;
 use PVE::QemuServer::Drive;
 use PVE::IntegrityControlConfig;
 use Sys::Guestfs;
+
+use PVE::RESTHandler;
+
+use base qw(PVE::RESTHandler);
+
+__PACKAGE__->register_method ({
+    name => 'test',
+    path => '{vmid}',
+    method => 'GET',
+    description => 'Test method',
+    parameters => {
+        additionalProperties => 0,
+        properties => {
+            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
+            node => PVE::JSONSchema::get_standard_option('pve-node'),
+        },
+    },
+    returns => {
+        type => 'string'
+    },
+    code => sub {
+        my ($param) = @_;
+
+        return "code sub was called with params: $param->{node}, $param->{vmid}";
+    }
+});
 
 sub fill_absent_hashes {
     my ($vmid, $conf, $ic_conf_str) = @_;
@@ -122,7 +149,7 @@ sub check {
     my @roots = @{__get_vm_disk_roots($g, $vmid, $conf)};
 
     my $ic_db = PVE::IntegrityControlDB::load_db($vmid);
-    my $ic_conf = PVE::IntegrityControlConfig::parse_ic_config_str($conf->{integrity_control});
+    my $ic_conf = PVE::IntegrityControlConfig::parse_ic_config($conf->{integrity_control});
     my $ic_files = PVE::IntegrityControlConfig::parse_ic_files_locations($ic_conf->{files});
 
     for my $root (@roots) {
@@ -162,8 +189,6 @@ sub check {
         $g->umount_all ()
     }
 
-    #print __FILE__ . ":" . __LINE__ . " ic files after\n" . Dumper($ic_files);
-    #print __FILE__ . ":" . __LINE__ . " db after check:\n" . Dumper($ic_db);
     if (scalar(keys %$ic_files) > 0) {
         die "Not succeded to check all files: remaining are\n" . Dumper($ic_files);
     }

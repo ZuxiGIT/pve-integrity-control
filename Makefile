@@ -1,4 +1,4 @@
-include /usr/share/dpkg/default.mk
+# include /usr/share/dpkg/default.mk
 
 PACKAGE=integrity-control
 BUILDDIR ?= $(PACKAGE)-$(DEB_VERSION_UPSTREAM)
@@ -24,7 +24,7 @@ GITVERSION:=$(shell git rev-parse HEAD)
 #
 # DEBS=$(DEB) $(DBG_DEB)
 
--include /usr/share/pve-doc-generator/pve-doc-generator.mk
+# include /usr/share/pve-doc-generator/pve-doc-generator.mk
 
 all:
 
@@ -37,7 +37,7 @@ ic.bash-completion:
 # 	PVE_GENERATING_DOCS=1 perl -I. -T -e "use PVE::CLI::qm; PVE::CLI::qm->generate_bash_completions();" >$@.tmp
 # 	mv $@.tmp $@
 
-PKGSOURCES=ic ic.conf.5 ic.bash-completion
+PKGSOURCES=ic #ic.conf.5 ic.bash-completion
 
 .PHONY: install
 install: $(PKGSOURCES)
@@ -48,15 +48,16 @@ install: $(PKGSOURCES)
 	install -d $(DESTDIR)/usr/share/$(PACKAGE)
 	# install -m 0644 -D ic.bash-completion $(DESTDIR)/$(BASHCOMPLDIR)/ic
 	$(MAKE) -C PVE install
-	install -m 0755 qm $(DESTDIR)$(SBINDIR)
-	install -m 0755 qmrestore $(DESTDIR)$(SBINDIR)
-	install -D -m 0644 modules-load.conf $(DESTDIR)/etc/modules-load.d/qemu-server.conf
-	install -m 0755 qmextract $(DESTDIR)$(LIBDIR)
-	install -m 0644 qm.1 $(DESTDIR)/$(MAN1DIR)
-	install -m 0644 qmrestore.1 $(DESTDIR)/$(MAN1DIR)
-	install -m 0644 cpu-models.conf.5 $(DESTDIR)/$(MAN5DIR)
-	install -m 0644 qm.conf.5 $(DESTDIR)/$(MAN5DIR)
-	cd $(DESTDIR)/$(MAN5DIR); ln -s -f qm.conf.5.gz vm.conf.5.gz
+	install -m 0755 ic $(DESTDIR)$(SBINDIR)
+	# install -m 0755 qm $(DESTDIR)$(SBINDIR)
+	# install -m 0755 qmrestore $(DESTDIR)$(SBINDIR)
+	# install -D -m 0644 modules-load.conf $(DESTDIR)/etc/modules-load.d/qemu-server.conf
+	# install -m 0755 qmextract $(DESTDIR)$(LIBDIR)
+	# install -m 0644 qm.1 $(DESTDIR)/$(MAN1DIR)
+	# install -m 0644 qmrestore.1 $(DESTDIR)/$(MAN1DIR)
+	# install -m 0644 cpu-models.conf.5 $(DESTDIR)/$(MAN5DIR)
+	# install -m 0644 qm.conf.5 $(DESTDIR)/$(MAN5DIR)
+	# cd $(DESTDIR)/$(MAN5DIR); ln -s -f qm.conf.5.gz vm.conf.5.gz
 
 $(BUILDDIR):
 	rm -rf $(BUILDDIR) $(BUILDDIR).tmp
@@ -82,7 +83,7 @@ sbuild: $(DSC)
 
 .PHONY: test
 test:
-	PVE_GENERATING_DOCS=1 perl -I. ./qm verifyapi
+	PVE_GENERATING_DOCS=1 perl -I. ./ic verifyapi
 	$(MAKE) -C test
 
 .PHONY: upload
