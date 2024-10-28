@@ -25,6 +25,8 @@ our $cmddef = {
     }],
     enable => ['PVE::API2::IntegrityControl', 'ic_enable', ['vmid'], { %node }],
     disable => ['PVE::API2::IntegrityControl', 'ic_disable', ['vmid'], { %node }],
+    'set-objects' => ['PVE::API2::IntegrityControl', 'ic_files_set',  ['vmid'], { %node}],
+    'unset-objects' => ['PVE::API2::IntegrityControl', 'ic_files_unset',  ['vmid'], { %node}],
 };
 
 1;

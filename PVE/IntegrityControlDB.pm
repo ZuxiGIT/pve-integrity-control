@@ -1,105 +1,107 @@
 package PVE::IntegrityControlDB;
 
-# it is a workaround to integrate a IntegrityControl database into PVE cluster fs
+# It is a workaround to integrate a IntegrityControl database into PVE cluster fs
+# To achieve this config file storage is exploited: integrity control database (files with hashes) are stored in
+# /etc/pve/<node>/qemu-server/intergrity-control directory under <vmid>.conf name
 # a record in this db has format
 # |disk:path hash|
-#  ^          ^
-#  |          |
-#  |          +-- a file md5 hash
-#  |
-#  +-- a file location, passed by user via cli
+#  ^    ^     ^
+#  |    |     |
+#  |    |     +-- a file sha256 hash
+#  |    |
+#  +-- a file location, passed by user via cli or REST api
+#
 
 use strict;
 use warnings;
 
-use PVE::AbstractConfig;
-use PVE::Tools;
+use DDP;
 use PVE::Cluster;
-use Data::Dumper;
-use base qw(PVE::AbstractConfig);
 
 my $nodename = PVE::INotify::nodename();
 
 PVE::Cluster::cfs_register_file(
     '/qemu-server/integrity-control/',
-    \&read_ic_filedb,
-    \&write_ic_filedb
+    \&__parse_ic_filedb,
+    \&__write_ic_filedb
 );
 
-# path where to store vm files' hashes, a.k.a. integrity control system filedb path
-sub ic_filedb_path {
-    my ($class, $vmid) = @_;
-
-    return "nodes/$nodename/qemu-server/$vmid.ic.db";
-}
-
-sub read_ic_filedb {
+sub __parse_ic_filedb {
     my ($filename, $raw, $strict) = @_;
 
     return if !defined($raw);
 
     my $res = {};
 
-    $filename =~ m|/qemu-server/(\d+)\.ic\.db$|
-	|| die "got strange filename '$filename'";
+    my $handle_error = sub {
+	    my ($msg) = @_;
+
+	    if ($strict) {
+	        die $msg;
+	    } else {
+	        warn $msg;
+	    }
+    };
+
+    $filename =~ m|/qemu-server/integrity-control/(\d+)\.conf$|
+	|| die "Got invalid ic db filepath: '$filename'";
 
     my $vmid = $1;
 
     my @lines = split(/\n/, $raw);
     foreach my $line (@lines) {
 	    next if $line =~ m/^\s*$/;
-        my ($file, $hash) = split(/ /, $line);
-        $res->{$file} = $hash;
+        if ($line =~ m|^/dev/\w+:.+ \S+$|) {
+            my ($file_location, $hash) = split(/ /, $line);
+            my ($disk, $file_path) = split(':', $file_location);
+            $res->{$disk}->{$file_path} = $hash;
+        } else {
+	        $handle_error->("vm $vmid - unable to parse ic db: $line\n");
+        }
     }
     return $res;
 }
 
-sub write_ic_filedb {
+sub __write_ic_filedb {
     my ($filename, $db) = @_;
 
     my $raw = '';
-    foreach my $file (sort keys %$db) {
-       my $hash = $db->{$file};
-       $raw .= "$file $hash\n";
+    foreach my $disk (sort keys %$db) {
+        foreach my $file (sort keys %{$db->{$disk}}) {
+            my $hash = $db->{$disk}->{$file};
+            $raw .= "$disk:$file $hash\n";
+        }
     }
 
     return $raw;
 }
 
-sub create_ic_filedb {
-    my ($class, $vmid, $node) = @_;
+sub __db_path {
+    my ($vmid, $node) = @_;
 
-    my $cfspath = $class->ic_filedb_path($vmid);
-
-	$class->write_config($vmid, {});
+    $node = $nodename if !$node;
+    return "nodes/$node/qemu-server/integrity-control/$vmid.conf";
 }
 
-sub load_ic_config{
-    my $vmid = shift;
+sub load {
+    my ($vmid, $node) = @_;
 
-    return PVE::IntegrityControlDB->load_config($vmid);
+    $node = $nodename if !$node;
+    my $dbpath = __db_path($vmid, $node);
+
+    my $db = PVE::Cluster::cfs_read_file($dbpath);
+    die "Integrity control database file '$dbpath' does not exist\n"
+	if !defined($db);
+
+    return $db;
 }
 
-sub write_ic_config{
+sub write {
     my ($vmid, $db) = @_;
 
-    PVE::IntegrityControlDB->write_config($vmid, $db);
-}
+    my $dbpath = __db_path($vmid);
 
-sub update_file_database {
-    my ($vmid, $leave, $delete) = @_;
-
-    my $files_hashes = load_db($vmid);
-
-    foreach my $file (@$delete) {
-        delete $files_hashes->{$file};
-    }
-
-    foreach my $file (@$leave) {
-        $files_hashes->{$file} = $files_hashes->{$file} || '';
-    }
-
-    write_db($vmid, $files_hashes);
+    PVE::Cluster::cfs_write_file($dbpath, $db);
 }
 
 1;

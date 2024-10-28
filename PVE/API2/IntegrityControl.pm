@@ -3,10 +3,15 @@ package PVE::API2::IntegrityControl;
 use strict;
 use warnings;
 
+use DDP;
+use PVE::JSONSchema;
 use PVE::QemuConfig;
+use PVE::QemuServer;
 use PVE::Storage;
 use PVE::Tools qw(extract_param);
 use Sys::Guestfs;
+use PVE::IntegrityControlDB;
+use PVE::IntegrityControlGuestFS;
 
 use PVE::API2::Qemu;
 
@@ -48,6 +53,8 @@ __PACKAGE__->register_method ({
     name => 'ic_enable',
     path => '{vmid}/status/enable',
     method => 'PUT',
+    protected => 1,
+    proxyto => 'node',
     description => 'Enable integrity control for VM',
     parameters => {
         additionalProperties => 0,
@@ -61,6 +68,7 @@ __PACKAGE__->register_method ({
     },
     code => sub {
         my ($param) = @_;
+
         return PVE::API2::Qemu->update_vm({%$param, integrity_control => 1});
     }
 });
@@ -69,6 +77,8 @@ __PACKAGE__->register_method ({
     name => 'ic_disable',
     path => '{vmid}/status/disable',
     method => 'PUT',
+    protected => 1,
+    proxyto => 'node',
     description => 'Enable integrity control for VM',
     parameters => {
         additionalProperties => 0,
@@ -86,165 +96,186 @@ __PACKAGE__->register_method ({
     }
 });
 
+PVE::JSONSchema::register_format('pve-ic-file', sub {
+    my ($ic_file, $noerr) = @_;
 
-sub fill_absent_hashes {
-    my ($vmid, $conf, $ic_conf_str) = @_;
+    if ($ic_file =~ m|^/dev/\w+:/.*$|i) {
+        return $ic_file;
+    }
+    return undef if $noerr;
+    die "unable to parse file path for integrity control system '$ic_file'\n";
+});
 
-    my $g = new Sys::Guestfs();
+PVE::JSONSchema::register_standard_option('pve-ic-files', {
+    description => "VM files for integrity control",
+    type => 'string',
+    format => 'pve-ic-file-list',
+    format_description => 'file[;file...]',
+});
 
-    my $ic_db = PVE::IntegrityControlDB::load_db($vmid);
-    my $ic_conf = PVE::IntegrityControlConfig::parse_ic_config_str($ic_conf_str);
-    my $ic_files = PVE::IntegrityControlConfig::parse_ic_files_locations($ic_conf->{files});
+__PACKAGE__->register_method ({
+    name => 'ic_files_set',
+    path => '{vmid}/objects',
+    method => 'PUT',
+    description => 'Specify VM files for integrity contol',
+    protected => 1,
+    proxyto => 'node',
+    parameters => {
+        additionalProperties => 0,
+        properties => {
+            node => PVE::JSONSchema::get_standard_option('pve-node'),
+            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
+            files => PVE::JSONSchema::get_standard_option('pve-ic-files'),
+        },
+    },
+    returns => {
+        type => 'null'
+    },
+    code => sub {
+        my ($param) = @_;
 
-    my @roots = @{__get_vm_disk_roots($g, $vmid, $conf)};
+        my $node = extract_param($param, 'node');
+        my $vmid = extract_param($param, 'vmid');
 
-    eval {
-        for my $root (@roots) {
-            print "skipping $root: no files to check\n" unless exists($ic_files->{$root});
-            next unless exists($ic_files->{$root});
+        my $check = PVE::QemuServer::check_running($vmid);
+        die "VM $vmid is running\n" if $check;
 
-            print "root: $root\n";
-            __mount_vm_disk_fs($g, $root);
+        my @ic_files_list = PVE::Tools::split_list($param->{files});
+        my %ic_files_hash;
 
-            for my $filename (@{$ic_files->{$root}}) {
-                my $db_checksum = \$ic_db->{"$root:$filename"};
-                next unless $$db_checksum eq "";
+        foreach my $file_location (sort @ic_files_list) {
+            my ($disk, $file_path) = split(':', $file_location);
+            push(@{$ic_files_hash{$disk}}, $file_path);
+        }
 
-                print "filename: $filename\n";
-                die "failed to find file $root:$filename\n" unless $g->is_file ($filename);
+        __set_ic_objects($vmid, \%ic_files_hash);
+        return;
+    }
+});
 
-                $$db_checksum = $g->checksum("sha256", $filename);
+sub __set_ic_objects {
+    my ($vmid, $ic_files) = @_;
+
+    my $db = PVE::IntegrityControlDB::load($vmid);
+
+    foreach my $disk (sort keys %$ic_files) {
+        foreach my $file_path (sort @{$ic_files->{$disk}}) {
+            die "Integrity control object redefinition\ndisk: $disk\nfile path: $file_path\n"
+            if exists $db->{$disk}->{$file_path};
+            $db->{$disk}->{$file_path} = '';
+        }
+    }
+
+    __fill_absent_hashes($vmid, $db);
+
+    PVE::IntegrityControlDB::write($vmid, $db);
+}
+
+sub __fill_absent_hashes {
+    my ($vmid, $db) = @_;
+
+    PVE::IntegrityControlGuestFS::mount_vm_disks($vmid);
+
+    foreach my $disk (keys %$db) {
+        foreach my $file (keys %{$db->{$disk}}) {
+            $db->{$disk}->{$file} = PVE::IntegrityControlGuestFS::get_file_hash("$disk:$file");
+        }
+    }
+
+    PVE::IntegrityControlGuestFS::umount_vm_disks();
+}
+
+__PACKAGE__->register_method ({
+    name => 'ic_files_unset',
+    path => '{vmid}/objects',
+    method => 'DELETE',
+    description => 'Unspecify VM files for integrity contol',
+    protected => 1,
+    proxyto => 'node',
+    parameters => {
+        additionalProperties => 0,
+        properties => {
+            node => PVE::JSONSchema::get_standard_option('pve-node'),
+            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
+            files => PVE::JSONSchema::get_standard_option('pve-ic-files'),
+        },
+    },
+    returns => {
+        type => 'null'
+    },
+    code => sub {
+        my ($param) = @_;
+
+        my $node = extract_param($param, 'node');
+        my $vmid = extract_param($param, 'vmid');
+
+        my $check = PVE::QemuServer::check_running($vmid);
+        die "VM $vmid is running\n" if $check;
+
+        my @ic_files_list = PVE::Tools::split_list($param->{files});
+        my %ic_files_hash;
+
+        foreach my $file_location (sort @ic_files_list) {
+            my ($disk, $file_path) = split(':', $file_location);
+            push(@{$ic_files_hash{$disk}}, $file_path);
+        }
+
+        __unset_ic_objects($vmid, \%ic_files_hash);
+        return;
+    }
+});
+
+sub __unset_ic_objects {
+    my ($vmid, $ic_files) = @_;
+
+    my $db = PVE::IntegrityControlDB::load($vmid);
+
+    foreach my $disk (sort keys %$ic_files) {
+        foreach my $file_path (sort @{$ic_files->{$disk}}) {
+            die "Integrity control object was not set earlier\ndisk: $disk\nfile path: $file_path\n"
+            if !exists $db->{$disk}->{$file_path};
+            delete $db->{$disk}->{$file_path};
+        }
+    }
+
+    PVE::IntegrityControlDB::write($vmid, $db);
+}
+
+__PACKAGE__->register_method ({
+    name => 'ic_files_get',
+    path => '{vmid}/objects',
+    method => 'GET',
+    description => 'Get VM files for integrity contol',
+    protected => 1,
+    proxyto => 'node',
+    parameters => {
+        additionalProperties => 0,
+        properties => {
+            node => PVE::JSONSchema::get_standard_option('pve-node'),
+            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
+        },
+    },
+    returns => {
+        type => 'string'
+    },
+    code => sub {
+        my ($param) = @_;
+
+        my $node = extract_param($param, 'node');
+        my $vmid = extract_param($param, 'vmid');
+
+        my $db = PVE::IntegrityControlDB::load($vmid);
+        my $raw = '';
+
+        foreach my $disk (sort keys %$db) {
+            foreach my $path (sort keys %{$db->{$disk}}) {
+                $raw .= "$disk:$path\n";
             }
-
-            # delete after processing files in the disk's partitions
-            delete $ic_files->{$root};
-
-            # Unmount everything.
-            $g->umount_all ()
         }
-
-        if (scalar(keys %$ic_files) > 0) {
-            die "failed to compute hashes for\n" . Dumper($ic_files) . "Check the correctness of disks and paths\n";
-        }
-    };
-
-    if (my $err = $@) {
-        # in case of error delete files in $ic_conf_str from db
-        my @delete = PVE::Tools::split_list($ic_conf->{files});
-        PVE::IntegrityControlDB::update_file_database($vmid, undef, \@delete);
-        die $err;
-    } else {
-        PVE::IntegrityControlDB::write_db($vmid, $ic_db);
+        # removing last whitespace
+        $raw =~ s/\s+$//g;
+        return $raw;
     }
-}
-
-sub __mount_vm_disk_fs {
-    my ($g, $root) = @_;
-
-    # Mount up the disks
-    #
-    # Sort keys by length, shortest first, so that we end up
-    # mounting the filesystems in the correct order.
-    my %mps = $g->inspect_get_mountpoints ($root);
-    my @mps = sort { length $a <=> length $b } (keys %mps);
-    for my $mp (@mps) {
-        eval { $g->mount_ro ($mps{$mp}, $mp) };
-        if ($@) {
-            print "$@ (ignored)\n"
-        }
-    }
-}
-
-sub __get_vm_disk_roots {
-    my ($g, $vmid, $conf) = @_;
-
-    my $storecfg = PVE::Storage::config();
-
-    my $bootdisks = PVE::QemuServer::Drive::get_bootdisks($conf);
-    for my $bootdisk (@$bootdisks) {
-        next if !PVE::QemuServer::Drive::is_valid_drivename($bootdisk);
-        print "bootdisk $bootdisk\n";
-        my $drive = PVE::QemuServer::Drive::parse_drive($bootdisk, $conf->{$bootdisk});
-        next if !defined($drive);
-        next if PVE::QemuServer::Drive::drive_is_cdrom($drive);
-        my $volid = $drive->{file};
-        next if !$volid;
-	    my ($size, $format, undef, undef) =  PVE::Storage::volume_size_info($storecfg, $volid);
-        my $diskformat = $format;
-	    my ($storeid, $storevolume) = PVE::Storage::parse_volume_id($volid, 1);
-	    my $scfg = PVE::Storage::storage_config($storecfg, $storeid);
-        print "path: ", my $diskpath = PVE::Storage::path($storecfg, $volid), "\n";
-
-
-
-        # Attach the disk image read-only to libguestfs.
-        # You could also add an optional format => ... argument here.  This is
-        # advisable since automatic format detection is insecure.
-        $g->add_drive ($diskpath, readonly => 1, format => $diskformat);
-    }
-
-    # Run the libguestfs back-end.
-    $g->launch ();
-
-    # Ask libguestfs to inspect for operating systems.
-    my @roots = $g->inspect_os ();
-    die "inspect_vm: no operating systems found in \"" . join(", ", @$bootdisks) . "\"\n" if @roots == 0;
-
-    return \@roots;
-}
-
-sub check {
-    my ($vmid, $conf) = @_;
-
-
-    my $g = new Sys::Guestfs();
-    my @roots = @{__get_vm_disk_roots($g, $vmid, $conf)};
-
-    my $ic_db = PVE::IntegrityControlDB::load_db($vmid);
-    my $ic_conf = PVE::IntegrityControlConfig::parse_ic_config($conf->{integrity_control});
-    my $ic_files = PVE::IntegrityControlConfig::parse_ic_files_locations($ic_conf->{files});
-
-    for my $root (@roots) {
-        print "skipping $root: no files to check\n" unless exists($ic_files->{$root});
-        next unless exists($ic_files->{$root});
-
-        printf "Root device: %s\n", $root;
-
-        # Print basic information about the operating system.
-        printf "  Product name: %s\n", $g->inspect_get_product_name ($root);
-        printf "  Version:      %d.%d\n",
-            $g->inspect_get_major_version ($root),
-            $g->inspect_get_minor_version ($root);
-        printf "  Type:         %s\n", $g->inspect_get_type ($root);
-        printf "  Distro:       %s\n", $g->inspect_get_distro ($root);
-
-        __mount_vm_disk_fs($g, $root);
-
-        foreach my $filename (@{$ic_files->{$root}}) {
-            die "failed to find file $root:$filename\n" unless $g->is_file ($filename);
-
-            my $checksum = $g->checksum("sha256", $filename);
-            my $db_checksum = \$ic_db->{"$root:$filename"};
-
-            if ($$db_checksum eq '') {
-                print "added new hash $checksum for $root:$filename\n";
-                $$db_checksum = $checksum;
-            } elsif ($$db_checksum ne $checksum) {
-                print "hash mismatch\nGot: $checksum\nReference:$$db_checksum\n";
-                die "";
-            }
-        }
-        # delete hash entry if everything was okey
-        delete $ic_files->{$root};
-
-        # Unmount everything.
-        $g->umount_all ()
-    }
-
-    if (scalar(keys %$ic_files) > 0) {
-        die "Not succeded to check all files: remaining are\n" . Dumper($ic_files);
-    }
-    PVE::IntegrityControlDB::write_db($vmid, $ic_db);
-}
+});
 
 1;
