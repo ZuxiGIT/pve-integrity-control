@@ -69,7 +69,27 @@ __PACKAGE__->register_method ({
     code => sub {
         my ($param) = @_;
 
-        return PVE::API2::Qemu->update_vm({%$param, integrity_control => 1});
+        my $vmid = $param->{vmid};
+        my $vm_cfg = PVE::QemuConfig->load_current_config($vmid, 1);
+        die "ERROR: Vm $vmid already has hookscript: $vm_cfg->{hookscript}\n" if $vm_cfg->{hookscript};
+
+        # CHECK vdisk_list subroutine in Storage.pm for different sub usage
+        my $hookscriptname = "ic-hookscript.pl";
+        my $scfg = PVE::Storage::config();
+        my $volume = '';
+        foreach my $id (sort keys %{$scfg->{ids}}) {
+            my $volume_cfg = $scfg->{ids}->{$id};
+            next if !$volume_cfg->{content}->{snippets};
+            $volume = $id;
+            last;
+        }
+
+        die "ERROR: Failed to find 'snippets' dir\n" if $volume eq '';
+
+        return PVE::API2::Qemu->update_vm({%$param,
+            integrity_control => 1,
+            hookscript => "$volume:snippets/$hookscriptname"
+        });
     }
 });
 
@@ -92,7 +112,10 @@ __PACKAGE__->register_method ({
     },
     code => sub {
         my ($param) = @_;
-        return PVE::API2::Qemu->update_vm({%$param, integrity_control => 0});
+        return PVE::API2::Qemu->update_vm({%$param,
+            integrity_control => 0,
+            delete => 'hookscript'
+        });
     }
 });
 
@@ -103,7 +126,7 @@ PVE::JSONSchema::register_format('pve-ic-file', sub {
         return $ic_file;
     }
     return undef if $noerr;
-    die "unable to parse file path for integrity control system '$ic_file'\n";
+    die "ERROR: Unable to parse file path for integrity control system '$ic_file'\n";
 });
 
 PVE::JSONSchema::register_standard_option('pve-ic-files', {
@@ -138,7 +161,7 @@ __PACKAGE__->register_method ({
         my $vmid = extract_param($param, 'vmid');
 
         my $check = PVE::QemuServer::check_running($vmid);
-        die "VM $vmid is running\n" if $check;
+        die "ERROR: Vm $vmid is running\n" if $check;
 
         my @ic_files_list = PVE::Tools::split_list($param->{files});
         my %ic_files_hash;
@@ -160,7 +183,7 @@ sub __set_ic_objects {
 
     foreach my $disk (sort keys %$ic_files) {
         foreach my $file_path (sort @{$ic_files->{$disk}}) {
-            die "Integrity control object redefinition\ndisk: $disk\nfile path: $file_path\n"
+            die "ERROR: Integrity control object redefinition\ndisk: $disk\nfile path: $file_path\n"
             if exists $db->{$disk}->{$file_path};
             $db->{$disk}->{$file_path} = '';
         }
@@ -210,7 +233,7 @@ __PACKAGE__->register_method ({
         my $vmid = extract_param($param, 'vmid');
 
         my $check = PVE::QemuServer::check_running($vmid);
-        die "VM $vmid is running\n" if $check;
+        die "ERROR: Vm $vmid is running\n" if $check;
 
         my @ic_files_list = PVE::Tools::split_list($param->{files});
         my %ic_files_hash;
@@ -232,7 +255,7 @@ sub __unset_ic_objects {
 
     foreach my $disk (sort keys %$ic_files) {
         foreach my $file_path (sort @{$ic_files->{$disk}}) {
-            die "Integrity control object was not set earlier\ndisk: $disk\nfile path: $file_path\n"
+            die "ERROR: Integrity control object was not set earlier\ndisk: $disk\nfile path: $file_path\n"
             if !exists $db->{$disk}->{$file_path};
             delete $db->{$disk}->{$file_path};
         }

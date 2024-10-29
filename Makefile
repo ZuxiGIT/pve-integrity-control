@@ -39,8 +39,13 @@ ic.bash-completion:
 
 PKGSOURCES=ic #ic.conf.5 ic.bash-completion
 
+.PHONY: install_hookscript
+install_hookscript:
+	perl scripts/install_hookscript.pl
+
+
 .PHONY: install
-install: $(PKGSOURCES)
+install: $(PKGSOURCES) install_hookscript
 	install -d $(DESTDIR)/$(SBINDIR)
 	install -d $(DESTDIR)$(LIBDIR)
 	install -d $(DESTDIR)/$(MAN1DIR)
