@@ -6,6 +6,7 @@ use warnings;
 use DDP;
 use PVE::Storage;
 use PVE::QemuServer::Drive;
+use PVE::QemuConfig;
 use Sys::Guestfs;
 
 my $guestfs_handle = Sys::Guestfs->new();
@@ -14,7 +15,7 @@ sub __get_vm_disks {
     my ($vmid) = @_;
 
     my $storage_conf = PVE::Storage::config();
-    my $vm_conf = PVE::QemuConfig->load_config($vmid);
+    my $vm_conf = PVE::QemuConfig->load_current_config($vmid);
     my $bootdisks = PVE::QemuServer::Drive::get_bootdisks($vm_conf);
 
     my %res;
@@ -73,12 +74,12 @@ sub get_file_hash {
 
     my @roots = $guestfs_handle->inspect_get_roots();
     if (!grep { $_ eq $disk } @roots) {
-        die "Unknown VM disk: $disk\n";
+        die "ERROR: Unknown VM disk: $disk\n";
     }
 
     my $hash = $guestfs_handle->checksum("sha256", $path);
 
-    die "Failed to get hash for $disk:$path\n" if $hash eq '';
+    die "ERROR: Failed to get hash for $disk:$path\n" if $hash eq '';
     return $hash;
 }
 
