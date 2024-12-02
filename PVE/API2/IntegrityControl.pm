@@ -12,7 +12,7 @@ use PVE::Tools qw(extract_param);
 use Sys::Guestfs;
 use PVE::IntegrityControl::DB;
 use PVE::IntegrityControl::GuestFS;
-use PVE::IntegrityControl::Log;
+use PVE::IntegrityControl::Log qw(info debug);
 
 use PVE::API2::Qemu;
 
@@ -40,7 +40,7 @@ __PACKAGE__->register_method ({
         my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
 
-        PVE::IntegrityControl::Log::info("IntegrityControl", "\"status\" was called with params vmid:$vmid, node:$node");
+        info(__PACKAGE__, "\"status\" was called with params vmid:$vmid, node:$node");
 
         my $conf = PVE::QemuConfig->load_current_config($vmid, 1);
 
@@ -74,7 +74,7 @@ __PACKAGE__->register_method ({
 
         my $vmid = $param->{vmid};
 
-        PVE::IntegrityControl::Log::info("IntegrityControl", "\"enable\" was called with params vmid:$vmid");
+        debug(__PACKAGE__, "\"enable\" was called with params vmid:$vmid");
 
         my $vm_cfg = PVE::QemuConfig->load_current_config($vmid, 1);
         die "ERROR: Vm $vmid already has hookscript: $vm_cfg->{hookscript}\n" if $vm_cfg->{hookscript};
@@ -120,7 +120,7 @@ __PACKAGE__->register_method ({
         my ($param) = @_;
         my $vmid = $param->{vmid};
 
-        PVE::IntegrityControl::Log::info("IntegrityControl", "\"disable\" was called with params vmid:$vmid");
+        debug(__PACKAGE__, "\"disable\" was called with params vmid:$vmid");
 
         return PVE::API2::Qemu->update_vm({%$param,
             integrity_control => 0,
@@ -170,7 +170,7 @@ __PACKAGE__->register_method ({
         my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
 
-        PVE::IntegrityControl::Log::info("IntegrityControl", "\"set-obects\" was called with params vmid:$vmid, files:$param->{files}");
+        debug(__PACKAGE__, "\"set-obects\" was called with params vmid:$vmid, files:$param->{files}");
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;

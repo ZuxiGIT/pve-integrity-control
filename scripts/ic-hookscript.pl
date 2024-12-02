@@ -2,7 +2,8 @@
 
 use strict;
 use warnings;
-use PVE::IntegrityControlChecker;
+use PVE::IntegrityControl::Checker;
+use PVE::IntegrityControl::Log qw(debug info);
 
 print "GUEST HOOK: " . join(' ', @ARGV). "\n";
 
@@ -16,11 +17,13 @@ if ($phase eq 'pre-start') {
     # First phase 'pre-start' will be executed before the guest
     # is started. Exiting with a code != 0 will abort the start
 
+    info(__PACKAGE__, "start of vm with vmid:$vmid during '$phase' phase was intercepted");
     print "INFO: pre-start phase\n";
     eval {
-        PVE::IntegrityControlChecker::check($vmid);
+        PVE::IntegrityControl::Checker::check($vmid);
     };
     print $@ if $@;
+    debug(__PACKAGE__, "failed to check vm with vmid:$vmid") if $@;
     exit(1) if $@;
 
     exit(0);

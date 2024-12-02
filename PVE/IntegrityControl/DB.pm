@@ -17,6 +17,7 @@ use warnings;
 
 use DDP;
 use PVE::Cluster;
+use PVE::IntegrityControl::Log qw(debug error);
 
 my $nodename = PVE::INotify::nodename();
 
@@ -86,12 +87,18 @@ sub __db_path {
 sub load {
     my ($vmid, $node) = @_;
 
-    $node = $nodename if !$node;
-    my $dbpath = __db_path($vmid, $node);
+    debug(__PACKAGE__, "\"load\" was called with params vmid:$vmid");
+
+    my $dbpath = __db_path($vmid);
 
     my $db = PVE::Cluster::cfs_read_file($dbpath);
-    die "Integrity control database file '$dbpath' does not exist\n"
-	if !defined($db);
+
+	if (!defined $db) {
+        error(__PACKAGE__, "Integrity control database file \"$dbpath\" does not exist");
+        die "Failed to load Integrity control database file\n";
+    }
+
+    debug(__PACKAGE__, "loaded IntegirtyControl db for vmid:$vmid\n" . np($db));
 
     return $db;
 }
@@ -99,9 +106,12 @@ sub load {
 sub write {
     my ($vmid, $db) = @_;
 
+    debug(__PACKAGE__, "\"write\" was called with params vmid:$vmid");
+
     my $dbpath = __db_path($vmid);
 
     PVE::Cluster::cfs_write_file($dbpath, $db);
+    debug(__PACKAGE__, "wrote IntegirtyControl db for vmid:$vmid \n" . np($db));
 }
 
 1;

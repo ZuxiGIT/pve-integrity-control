@@ -9,14 +9,23 @@ use PVE::QemuServer::Drive;
 use PVE::QemuConfig;
 use Sys::Guestfs;
 
+use PVE::IntegrityControl::Log qw(info warn debug);
+
 my $guestfs_handle = Sys::Guestfs->new();
 
 sub __get_vm_disks {
     my ($vmid) = @_;
 
+    debug(__PACKAGE__, "\"__get_vm_disks\" was called with params vmid:$vmid");
+
     my $storage_conf = PVE::Storage::config();
+    debug(__PACKAGE__, "\"__get_vm_disks\" storage config for vmid:$vmid\n" . np($storage_conf));
+
     my $vm_conf = PVE::QemuConfig->load_current_config($vmid);
+    debug(__PACKAGE__, "\"__get_vm_disks\" config for vmid:$vmid\n" . np($vm_conf));
+
     my $bootdisks = PVE::QemuServer::Drive::get_bootdisks($vm_conf);
+    debug(__PACKAGE__, "\"__get_vm_disks\" bootdisks for vmid:$vmid\n" . np($bootdisks));
 
     my %res;
 
@@ -32,11 +41,14 @@ sub __get_vm_disks {
         $res{$bootdisk}->{file} = $diskpath;
         $res{$bootdisk}->{format} = $format;
     }
+    debug(__PACKAGE__, "\"__get_vm_disks\" res for vmid:$vmid\n" . np(%res));
     return \%res;
 }
 
 sub mount_vm_disks {
     my ($vmid) = @_;
+
+    debug(__PACKAGE__, "\"mount_vm_disks\" was called with params vmid:$vmid");
 
     my $disks = __get_vm_disks($vmid);
 
@@ -63,6 +75,8 @@ sub mount_vm_disks {
 }
 
 sub umount_vm_disks {
+    debug(__PACKAGE__, "\"umount_vm_disks\" was called");
+
     $guestfs_handle->umount_all();
     $guestfs_handle->shutdown();
 }
@@ -70,16 +84,24 @@ sub umount_vm_disks {
 sub get_file_hash {
     my ($file_path) = @_;
 
+    debug(__PACKAGE__, "\"get_file_hash\" was called with params file_path:$file_path");
+
     my ($disk, $path) = split(':', $file_path);
 
     my @roots = $guestfs_handle->inspect_get_roots();
     if (!grep { $_ eq $disk } @roots) {
-        die "ERROR: Unknown VM disk: $disk\n";
+        error(__PACKAGE__, "\"get_file_hash\" unknown VM disk $disk");
+        die "Failed to get file hash\n";
     }
 
     my $hash = $guestfs_handle->checksum("sha256", $path);
 
-    die "ERROR: Failed to get hash for $disk:$path\n" if $hash eq '';
+    if ($hash eq '') {
+        error(__PACKAGE__, "\"get_file_hash\" Failed to get hash for $disk:$path");
+        die "Failed to get file hash\n";
+    }
+
+    debug(__PACKAGE__, "\"get_file_hash\" computed hash for $file_path is $hash");
     return $hash;
 }
 
