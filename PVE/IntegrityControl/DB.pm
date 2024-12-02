@@ -1,4 +1,4 @@
-package PVE::IntegrityControlDB;
+package PVE::IntegrityControl::DB;
 
 # It is a workaround to integrate a IntegrityControl database into PVE cluster fs
 # To achieve this config file storage is exploited: integrity control database (files with hashes) are stored in

@@ -1,4 +1,4 @@
-package PVE::IntegrityControlGuestFS;
+package PVE::IntegrityControl::GuestFS;
 
 use strict;
 use warnings;

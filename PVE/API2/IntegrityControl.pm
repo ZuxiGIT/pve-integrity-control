@@ -10,8 +10,8 @@ use PVE::QemuServer;
 use PVE::Storage;
 use PVE::Tools qw(extract_param);
 use Sys::Guestfs;
-use PVE::IntegrityControlDB;
-use PVE::IntegrityControlGuestFS;
+use PVE::IntegrityControl::DB;
+use PVE::IntegrityControl::GuestFS;
 
 use PVE::API2::Qemu;
 
@@ -179,7 +179,7 @@ __PACKAGE__->register_method ({
 sub __set_ic_objects {
     my ($vmid, $ic_files) = @_;
 
-    my $db = PVE::IntegrityControlDB::load($vmid);
+    my $db = PVE::IntegrityControl::DB::load($vmid);
 
     foreach my $disk (sort keys %$ic_files) {
         foreach my $file_path (sort @{$ic_files->{$disk}}) {
@@ -191,21 +191,21 @@ sub __set_ic_objects {
 
     __fill_absent_hashes($vmid, $db);
 
-    PVE::IntegrityControlDB::write($vmid, $db);
+    PVE::IntegrityControl::DB::write($vmid, $db);
 }
 
 sub __fill_absent_hashes {
     my ($vmid, $db) = @_;
 
-    PVE::IntegrityControlGuestFS::mount_vm_disks($vmid);
+    PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 
     foreach my $disk (keys %$db) {
         foreach my $file (keys %{$db->{$disk}}) {
-            $db->{$disk}->{$file} = PVE::IntegrityControlGuestFS::get_file_hash("$disk:$file");
+            $db->{$disk}->{$file} = PVE::IntegrityControl::GuestFS::get_file_hash("$disk:$file");
         }
     }
 
-    PVE::IntegrityControlGuestFS::umount_vm_disks();
+    PVE::IntegrityControl::GuestFS::umount_vm_disks();
 }
 
 __PACKAGE__->register_method ({
@@ -251,7 +251,7 @@ __PACKAGE__->register_method ({
 sub __unset_ic_objects {
     my ($vmid, $ic_files) = @_;
 
-    my $db = PVE::IntegrityControlDB::load($vmid);
+    my $db = PVE::IntegrityControl::DB::load($vmid);
 
     foreach my $disk (sort keys %$ic_files) {
         foreach my $file_path (sort @{$ic_files->{$disk}}) {
@@ -261,7 +261,7 @@ sub __unset_ic_objects {
         }
     }
 
-    PVE::IntegrityControlDB::write($vmid, $db);
+    PVE::IntegrityControl::DB::write($vmid, $db);
 }
 
 __PACKAGE__->register_method ({
@@ -287,7 +287,7 @@ __PACKAGE__->register_method ({
         my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
 
-        my $db = PVE::IntegrityControlDB::load($vmid);
+        my $db = PVE::IntegrityControl::DB::load($vmid);
         my $raw = '';
 
         foreach my $disk (sort keys %$db) {
