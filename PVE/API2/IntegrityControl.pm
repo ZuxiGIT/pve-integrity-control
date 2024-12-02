@@ -40,10 +40,11 @@ __PACKAGE__->register_method ({
         my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
 
-        info(__PACKAGE__, "\"status\" was called with params vmid:$vmid, node:$node");
+        debug(__PACKAGE__, "\"status\" was called with params vmid:$vmid, node:$node");
 
         my $conf = PVE::QemuConfig->load_current_config($vmid, 1);
 
+        debug(__PACKAGE__, "\"status\" integrity_control: $conf->{integrity_control}");
         if ($conf->{integrity_control}) {
             return "enabled";
         } else {

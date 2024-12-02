@@ -9,7 +9,7 @@ use PVE::QemuServer::Drive;
 use PVE::QemuConfig;
 use Sys::Guestfs;
 
-use PVE::IntegrityControl::Log qw(info warn debug);
+use PVE::IntegrityControl::Log qw(error info warn debug);
 
 my $guestfs_handle = Sys::Guestfs->new();
 
@@ -18,13 +18,22 @@ sub __get_vm_disks {
 
     debug(__PACKAGE__, "\"__get_vm_disks\" was called with params vmid:$vmid");
 
-    my $storage_conf = PVE::Storage::config();
+
+    my $storage_conf = undef;
+    my $vm_conf = undef;
+    my $bootdisks = undef;
+
+    eval {
+        $storage_conf = PVE::Storage::config();
+        $vm_conf = PVE::QemuConfig->load_config($vmid);
+        $bootdisks = PVE::QemuServer::Drive::get_bootdisks($vm_conf);
+    };
+    if ($@) {
+        error(__PACKAGE__, "\"__get_vm_disks\" error occured: $@\n");
+        die $@;
+    }
     debug(__PACKAGE__, "\"__get_vm_disks\" storage config for vmid:$vmid\n" . np($storage_conf));
-
-    my $vm_conf = PVE::QemuConfig->load_current_config($vmid);
     debug(__PACKAGE__, "\"__get_vm_disks\" config for vmid:$vmid\n" . np($vm_conf));
-
-    my $bootdisks = PVE::QemuServer::Drive::get_bootdisks($vm_conf);
     debug(__PACKAGE__, "\"__get_vm_disks\" bootdisks for vmid:$vmid\n" . np($bootdisks));
 
     my %res;
@@ -53,22 +62,30 @@ sub mount_vm_disks {
     my $disks = __get_vm_disks($vmid);
 
     foreach my $disk (keys %$disks) {
+        debug(__PACKAGE__, "\"mount_vm_disks\" adding drive $disks->{$disk}->{file}");
         $guestfs_handle->add_drive($disks->{$disk}->{file}, readonly => 1, format => $disks->{$disk}->{format});
     }
     $guestfs_handle->launch();
+    debug(__PACKAGE__, "\"mount_vm_disks\" launched guestfs handler");
+
     my @roots = $guestfs_handle->inspect_os();
-    die "inspect_vm: no operating systems found in \"" . join(", ", keys %$disks) . "\"\n" if @roots == 0;
+    if (@roots == 0) {
+        error(__PACKAGE__, "\"mount_vm_disks\" inspect_vm: no operating systems found in \"" . join(", ", keys %$disks) . "\"\n");
+        die "Faied to mount vm disks\n";
+    }
 
     # Mount up the disks
     foreach my $root (sort @roots) {
         # Sort keys by length, shortest first, so that we end up
         # mounting the filesystems in the correct order.
+        debug(__PACKAGE__, "\"mount_vm_disks\" inspecting for mountpoints $root");
         my %mps = $guestfs_handle->inspect_get_mountpoints($root);
         my @mps = sort { length $a <=> length $b } (keys %mps);
         for my $mp (@mps) {
+            debug(__PACKAGE__, "\"mount_vm_disks\" mounting mountable $mps{$mp} to mountpoint $mp");
             eval { $guestfs_handle->mount_ro($mps{$mp}, $mp) };
             if ($@) {
-                print "$@ (ignored)\n"
+                warn(__PACKAGE__, "\"mount_vm_disks\" error occured: $@ (ignored)");
             }
         }
     }

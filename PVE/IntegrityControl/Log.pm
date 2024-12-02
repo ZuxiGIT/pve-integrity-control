@@ -14,7 +14,6 @@ error
 
 sub info {
     my ($comp, $what) = @_;
-
     get_logger($comp)->info($what);
 }
 
@@ -26,6 +25,11 @@ sub debug{
 sub warn{
     my ($comp, $what) = @_;
     get_logger($comp)->warn($what);
+}
+
+sub error{
+    my ($comp, $what) = @_;
+    get_logger($comp)->error($what);
 }
 
 1;

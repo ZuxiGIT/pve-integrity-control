@@ -2,10 +2,9 @@
 
 use strict;
 use warnings;
-use PVE::IntegrityControl::Checker;
-use PVE::IntegrityControl::Log qw(debug info);
 
-print "GUEST HOOK: " . join(' ', @ARGV). "\n";
+use PVE::IntegrityControl::Checker;
+use PVE::IntegrityControl::Log qw(debug);
 
 # First argument is the vmid
 my $vmid = shift;
@@ -17,13 +16,16 @@ if ($phase eq 'pre-start') {
     # First phase 'pre-start' will be executed before the guest
     # is started. Exiting with a code != 0 will abort the start
 
-    info(__PACKAGE__, "start of vm with vmid:$vmid during '$phase' phase was intercepted");
-    print "INFO: pre-start phase\n";
+    debug("PVE::IntegrityControl::Hookscript", "start of vm with vmid:$vmid during '$phase' phase was intercepted");
+
+    if ($ENV{PVE_MIGRATED_FROM}) {
+        debug("PVE::IntegrityControl::Hookscript", "vm was started during migration process, check is delayed to 'pre-start' phase during VM resuming process");
+        exit(0);
+    }
     eval {
         PVE::IntegrityControl::Checker::check($vmid);
     };
-    print $@ if $@;
-    debug(__PACKAGE__, "failed to check vm with vmid:$vmid") if $@;
+    error("PVE::IntegrityControl::Hookscript", "failed to check vm with vmid:$vmid") if $@;
     exit(1) if $@;
 
     exit(0);
@@ -32,8 +34,11 @@ if ($phase eq 'pre-start') {
 
     # Second phase 'post-start' will be executed after the guest
     # successfully started.
-
-    print "$vmid started successfully.\n";
+    if ($ENV{PVE_MIGRATED_FROM}) {
+        debug("PVE::IntegrityControl::Hookscript", "vm started, but is suspended until the end of disk and vmstate transfer");
+    } else {
+        debug("PVE::IntegrityControl::Hookscript", "vm started successfully");
+    }
 
 } elsif ($phase eq 'pre-stop') {
 
