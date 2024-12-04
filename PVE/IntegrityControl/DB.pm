@@ -94,7 +94,7 @@ sub load {
     my $db = PVE::Cluster::cfs_read_file($dbpath);
 
 	if (!defined $db) {
-        error(__PACKAGE__, "Integrity control database file \"$dbpath\" does not exist");
+        debug(__PACKAGE__, "Integrity control database file \"$dbpath\" does not exist");
         die "Failed to load Integrity control database file\n";
     }
 
@@ -112,6 +112,13 @@ sub write {
 
     PVE::Cluster::cfs_write_file($dbpath, $db);
     debug(__PACKAGE__, "wrote IntegirtyControl db for vmid:$vmid \n" . np($db));
+}
+
+sub create {
+    my ($vmid) = @_;
+
+    debug(__PACKAGE__, "\"create\" was called with params vmid:$vmid");
+    PVE::IntegrityControl::DB::write($vmid, {});
 }
 
 1;

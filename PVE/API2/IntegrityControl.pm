@@ -12,6 +12,7 @@ use PVE::Tools qw(extract_param);
 use Sys::Guestfs;
 use PVE::IntegrityControl::DB;
 use PVE::IntegrityControl::GuestFS;
+use PVE::IntegrityControl::Checker;
 use PVE::IntegrityControl::Log qw(info debug);
 
 use PVE::API2::Qemu;
@@ -171,7 +172,7 @@ __PACKAGE__->register_method ({
         my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
 
-        debug(__PACKAGE__, "\"set-obects\" was called with params vmid:$vmid, files:$param->{files}");
+        debug(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid, files:$param->{files}");
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;
@@ -192,7 +193,17 @@ __PACKAGE__->register_method ({
 sub __set_ic_objects {
     my ($vmid, $ic_files) = @_;
 
-    my $db = PVE::IntegrityControl::DB::load($vmid);
+    debug(__PACKAGE__, "\"__set_ic_obects\" was called with params vmid:$vmid, files:\n" . np($ic_files));
+
+    my $db;
+    eval {
+        $db = PVE::IntegrityControl::DB::load($vmid);
+    };
+    if ($@) {
+        info(__PACKAGE__, "\"__set_ic_objects\" there is no IntegrityControl DB for $vmid VM");
+        info(__PACKAGE__, "\"__set_ic_objects\" creating new one for $vmid VM");
+        PVE::IntegrityControl::DB::create($vmid)
+    }
 
     foreach my $disk (sort keys %$ic_files) {
         foreach my $file_path (sort @{$ic_files->{$disk}}) {
@@ -202,23 +213,8 @@ sub __set_ic_objects {
         }
     }
 
-    __fill_absent_hashes($vmid, $db);
-
+    PVE::IntegrityControl::Checker::fill_absent_hashes($vmid, $db);
     PVE::IntegrityControl::DB::write($vmid, $db);
-}
-
-sub __fill_absent_hashes {
-    my ($vmid, $db) = @_;
-
-    PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
-
-    foreach my $disk (keys %$db) {
-        foreach my $file (keys %{$db->{$disk}}) {
-            $db->{$disk}->{$file} = PVE::IntegrityControl::GuestFS::get_file_hash("$disk:$file");
-        }
-    }
-
-    PVE::IntegrityControl::GuestFS::umount_vm_disks();
 }
 
 __PACKAGE__->register_method ({

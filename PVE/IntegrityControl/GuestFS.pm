@@ -99,9 +99,9 @@ sub umount_vm_disks {
 }
 
 sub get_file_hash {
-    my ($file_path) = @_;
+    my ($digest, $file_path) = @_;
 
-    debug(__PACKAGE__, "\"get_file_hash\" was called with params file_path:$file_path");
+    debug(__PACKAGE__, "\"get_file_hash\" was called with params crypto digest:$digest file_path:$file_path");
 
     my ($disk, $path) = split(':', $file_path);
 
@@ -111,7 +111,9 @@ sub get_file_hash {
         die "Failed to get file hash\n";
     }
 
-    my $hash = $guestfs_handle->checksum("sha256", $path);
+    my $file_content = $guestfs_handle->read_file($path);
+    my $hash = unpack('H*', Net::SSLeay::EVP_Digest($file_content, $digest));
+
 
     if ($hash eq '') {
         error(__PACKAGE__, "\"get_file_hash\" Failed to get hash for $disk:$path");

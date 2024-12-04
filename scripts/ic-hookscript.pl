@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 use PVE::IntegrityControl::Checker;
-use PVE::IntegrityControl::Log qw(debug);
+use PVE::IntegrityControl::Log qw(debug error info);
 
 # First argument is the vmid
 my $vmid = shift;
@@ -25,9 +25,14 @@ if ($phase eq 'pre-start') {
     eval {
         PVE::IntegrityControl::Checker::check($vmid);
     };
-    error("PVE::IntegrityControl::Hookscript", "failed to check vm with vmid:$vmid") if $@;
-    exit(1) if $@;
+    if ($@) {
+        debug("PVE::IntegrityControl::Hookscript", "failed with : $@");
+        error("PVE::IntegrityControl::Hookscript", "failed to check vm with vmid:$vmid");
+        error("PVE::IntegrityControl::Hookscript", "vm start is not permitted");
+        exit(1);
+    }
 
+    info("PVE::IntegrityControl::Hookscript", "vm start is permitted");
     exit(0);
 
 } elsif ($phase eq 'post-start') {
