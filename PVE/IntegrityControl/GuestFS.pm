@@ -98,30 +98,22 @@ sub umount_vm_disks {
     $guestfs_handle->shutdown();
 }
 
-sub get_file_hash {
-    my ($digest, $file_path) = @_;
+sub read_file {
+    my ($file_path) = @_;
 
-    debug(__PACKAGE__, "\"get_file_hash\" was called with params crypto digest:$digest file_path:$file_path");
+    debug(__PACKAGE__, "\"read_file\" was called with params file_path:$file_path");
 
     my ($disk, $path) = split(':', $file_path);
 
     my @roots = $guestfs_handle->inspect_get_roots();
     if (!grep { $_ eq $disk } @roots) {
-        error(__PACKAGE__, "\"get_file_hash\" unknown VM disk $disk");
+        error(__PACKAGE__, "\"read_file\" unknown VM disk $disk");
         die "Failed to get file hash\n";
     }
 
     my $file_content = $guestfs_handle->read_file($path);
-    my $hash = unpack('H*', Net::SSLeay::EVP_Digest($file_content, $digest));
 
-
-    if ($hash eq '') {
-        error(__PACKAGE__, "\"get_file_hash\" Failed to get hash for $disk:$path");
-        die "Failed to get file hash\n";
-    }
-
-    debug(__PACKAGE__, "\"get_file_hash\" computed hash for $file_path is $hash");
-    return $hash;
+    return $file_content;
 }
 
 1;

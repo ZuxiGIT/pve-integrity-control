@@ -56,6 +56,9 @@ sub __parse_ic_filedb {
             my ($file_location, $hash) = split(/ /, $line);
             my ($disk, $file_path) = split(':', $file_location);
             $res->{$disk}->{$file_path} = $hash;
+        } elsif ($line =~ m|^config: \S+$|) {
+            my (undef, $hash) = split(/ /, $line);
+            $res->{config} = $hash;
         } else {
 	        $handle_error->("vm $vmid - unable to parse ic db: $line\n");
         }
@@ -68,6 +71,10 @@ sub __write_ic_filedb {
 
     my $raw = '';
     foreach my $disk (sort keys %$db) {
+        if ($disk eq 'config') {
+            $raw .= "config: $db->{config}";
+            next;
+        }
         foreach my $file (sort keys %{$db->{$disk}}) {
             my $hash = $db->{$disk}->{$file};
             $raw .= "$disk:$file $hash\n";

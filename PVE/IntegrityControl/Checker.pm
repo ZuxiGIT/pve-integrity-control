@@ -5,9 +5,13 @@ use warnings;
 
 use DDP;
 use Net::SSLeay;
+use PVE::QemuConfig;
+use PVE::Cluster;
 use PVE::IntegrityControl::DB;
 use PVE::IntegrityControl::GuestFS;
 use PVE::IntegrityControl::Log qw(debug error info);
+
+my $digest = 0;
 
 sub __init_openssl_gost_engine {
     debug(__PACKAGE__, "\"__init_openssl_gost_engine\" was called");
@@ -15,16 +19,56 @@ sub __init_openssl_gost_engine {
     my $engine = Net::SSLeay::ENGINE_by_id("gost");
     debug(__PACKAGE__, "\"__init_openssl_gost_engine\" value corresponding to GOST engine: $engine");
 
-    # 0xffff magic constans means ENGINE_METHOD_ALL
-    if (!Net::SSLeay::ENGINE_set_default($engine, 0xffff)) {
-        error(__PACKAGE__, "\"__init_openssl_gost_engine\" failed to set GOST engine");
+    # 0x0080 magic constans means ENGINE_METHOD_DIGESTS
+    if (!Net::SSLeay::ENGINE_set_default($engine, 0x0080)) {
+        error(__PACKAGE__, "\"__init_openssl_gost_engine\" failed to set GOST engine digests method");
         die "Faield to set up " . __PACKAGE__ . " environment";
     }
 
     Net::SSLeay::load_error_strings();
     Net::SSLeay::OpenSSL_add_all_algorithms();
     my $ss = Net::SSLeay::P_EVP_MD_list_all();
-    info(__PACKAGE__, " digests:\n " . np($ss));
+
+    debug(__PACKAGE__, " available digests:\n " . np($ss));
+    $digest = Net::SSLeay::EVP_get_digestbyname("md_gost12_256");
+
+    die "Failed to obtain GOST digest handler" if not $digest;
+}
+
+sub __get_hash {
+    my ($data) = @_;
+
+    return unpack('H*', Net::SSLeay::EVP_Digest($data, $digest));
+}
+
+sub __check_config_file {
+    my ($vmid, $expected) = @_;
+
+    debug(__PACKAGE__, "\"__check_config_file\" was called for vmid:$vmid with expected:$expected\n");
+
+    my $raw = __get_config_file_content($vmid);
+    my $hash = __get_hash($raw);
+    debug(__PACKAGE__, "\"__check_config_file\" hash:$hash");
+
+    if ($expected ne $hash) {
+        debug(__PACKAGE__, "\"__check_config_file\" hash mismatch for config file: expected $expected, got $hash");
+        die "ERROR: hash mismatch for config file\n";
+    }
+}
+
+sub __get_config_file_content {
+    my ($vmid) = @_;
+
+    debug(__PACKAGE__, "\"__get_config_file_content\" was called for vmid:$vmid");
+
+    my $path = PVE::QemuConfig->cfs_config_path($vmid);
+    debug(__PACKAGE__, "\"__get_config_file_content\" path: $path");
+
+    my $raw = PVE::Cluster::get_config($path);
+    die "Error read config file for $vmid" if $raw eq '';
+    debug(__PACKAGE__, "\"__get_config_file_content\" content\n$raw");
+
+    return $raw;
 }
 
 sub check {
@@ -32,36 +76,48 @@ sub check {
 
     debug(__PACKAGE__, "\"check\" was called with params vmid:$vmid");
 
-    __init_openssl_gost_engine();
-    my $digest = Net::SSLeay::EVP_get_digestbyname("md_gost12_256");
+    __init_openssl_gost_engine() if not $digest;
 
     my %db = %{PVE::IntegrityControl::DB::load($vmid)};
     PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 
     foreach my $disk (sort keys %db) {
+        if ($disk eq 'config') {
+            __check_config_file($vmid, $db{config});
+            next;
+        }
+
         foreach my $path (sort keys %{$db{$disk}}) {
-            my $hash  = PVE::IntegrityControl::GuestFS::get_file_hash($digest, "$disk:$path");
+            my $raw = PVE::IntegrityControl::GuestFS::read_file("$disk:$path");
+            my $hash = __get_hash($raw);
             if ($db{$disk}{$path} ne  $hash) {
                 debug(__PACKAGE__, "\"check\" hash mismatch for $disk:$path: expected $db{$disk}{$path}, got $hash");
                 die "ERROR: hash mismatch for $disk:$path\n";
             }
+            debug(__PACKAGE__, "\"check\" hash match, hash:$hash");
         }
     }
-    info(__PACKAGE__, "\"check\" passed successfully");
 
+    info(__PACKAGE__, "\"check\" passed successfully");
     PVE::IntegrityControl::GuestFS::umount_vm_disks();
 }
 
 sub fill_absent_hashes {
     my ($vmid, $db) = @_;
 
-    __init_openssl_gost_engine();
-    my $digest = Net::SSLeay::EVP_get_digestbyname("md_gost12_256");
+    debug(__PACKAGE__, "\"fill_absent_hashes\" was called with params vmid:$vmid");
+
+    __init_openssl_gost_engine() if not $digest;
+
     PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 
     foreach my $disk (keys %$db) {
+        if ($disk eq 'config') {
+            $db->{config} = __get_hash(__get_config_file_content($vmid));
+            next;
+        }
         foreach my $file (keys %{$db->{$disk}}) {
-            $db->{$disk}->{$file} = PVE::IntegrityControl::GuestFS::get_file_hash($digest, "$disk:$file");
+            $db->{$disk}->{$file} = __get_hash(PVE::IntegrityControl::GuestFS::read_file("$disk:$file"));
         }
     }
 

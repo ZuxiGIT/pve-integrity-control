@@ -160,7 +160,12 @@ __PACKAGE__->register_method ({
         properties => {
             node => PVE::JSONSchema::get_standard_option('pve-node'),
             vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
-            files => PVE::JSONSchema::get_standard_option('pve-ic-files'),
+            files => PVE::JSONSchema::get_standard_option('pve-ic-files', {
+                optional => 1}),
+            config => {
+                type => 'boolean',
+                optional => 1,
+            }
         },
     },
     returns => {
@@ -171,27 +176,34 @@ __PACKAGE__->register_method ({
 
         my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
+        my $files = extract_param($param, 'files');
+        my $config = extract_param($param, 'config');
 
-        debug(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid, files:$param->{files}");
+        debug(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid");
+        debug(__PACKAGE__, "\"set-objects\" files: $files") if $files;
+        debug(__PACKAGE__, "\"set-objects\" config: $config") if $config;
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;
 
-        my @ic_files_list = PVE::Tools::split_list($param->{files});
         my %ic_files_hash;
 
-        foreach my $file_location (sort @ic_files_list) {
-            my ($disk, $file_path) = split(':', $file_location);
-            push(@{$ic_files_hash{$disk}}, $file_path);
+        if ($files) {
+            my @ic_files_list = PVE::Tools::split_list($param->{files});
+
+            foreach my $file_location (sort @ic_files_list) {
+                my ($disk, $file_path) = split(':', $file_location);
+                push(@{$ic_files_hash{$disk}}, $file_path);
+            }
         }
 
-        __set_ic_objects($vmid, \%ic_files_hash);
+        __set_ic_objects($vmid, \%ic_files_hash, $config);
         return;
     }
 });
 
 sub __set_ic_objects {
-    my ($vmid, $ic_files) = @_;
+    my ($vmid, $ic_files, $config) = @_;
 
     debug(__PACKAGE__, "\"__set_ic_obects\" was called with params vmid:$vmid, files:\n" . np($ic_files));
 
@@ -207,10 +219,15 @@ sub __set_ic_objects {
 
     foreach my $disk (sort keys %$ic_files) {
         foreach my $file_path (sort @{$ic_files->{$disk}}) {
-            die "ERROR: Integrity control object redefinition\ndisk: $disk\nfile path: $file_path\n"
+            die "ERROR: Integrity control object redefinition [disk: $disk file path: $file_path]\n"
             if exists $db->{$disk}->{$file_path};
             $db->{$disk}->{$file_path} = '';
         }
+    }
+
+    if ($config) {
+        die "ERROR: Integrity control object redefinition [config]\n" if exists $db->{config};
+        $db->{config} = '';
     }
 
     PVE::IntegrityControl::Checker::fill_absent_hashes($vmid, $db);
@@ -240,31 +257,41 @@ __PACKAGE__->register_method ({
 
         my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
+        my $files = extract_param($param, 'files');
+        my $config = extract_param($param, 'config');
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;
 
-        my @ic_files_list = PVE::Tools::split_list($param->{files});
         my %ic_files_hash;
+        if ($files) {
+            my @ic_files_list = PVE::Tools::split_list($files);
 
-        foreach my $file_location (sort @ic_files_list) {
-            my ($disk, $file_path) = split(':', $file_location);
-            push(@{$ic_files_hash{$disk}}, $file_path);
+            foreach my $file_location (sort @ic_files_list) {
+                my ($disk, $file_path) = split(':', $file_location);
+                push(@{$ic_files_hash{$disk}}, $file_path);
+            }
         }
 
-        __unset_ic_objects($vmid, \%ic_files_hash);
+        __unset_ic_objects($vmid, \%ic_files_hash, $config);
         return;
     }
 });
 
 sub __unset_ic_objects {
-    my ($vmid, $ic_files) = @_;
+    my ($vmid, $ic_files, $config) = @_;
 
     my $db = PVE::IntegrityControl::DB::load($vmid);
 
+    if ($config) {
+        die "ERROR: Integrity control object was not set earlier: [config]\n"
+        if !exists $db->{config};
+        delete $db->{config};
+    }
+
     foreach my $disk (sort keys %$ic_files) {
         foreach my $file_path (sort @{$ic_files->{$disk}}) {
-            die "ERROR: Integrity control object was not set earlier\ndisk: $disk\nfile path: $file_path\n"
+            die "ERROR: Integrity control object was not set earlier: [disk: $disk file path: $file_path]\n"
             if !exists $db->{$disk}->{$file_path};
             delete $db->{$disk}->{$file_path};
         }
