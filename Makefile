@@ -29,3 +29,10 @@ install: $(PKGSOURCES) install_hookscript
 test:
 	PVE_GENERATING_DOCS=1 perl -I. ./ic verifyapi
 	# $(MAKE) -C test
+
+.PHONY: deps-install
+deps-install:
+	apt install -y libdata-printer-perl
+	apt install -y libguestfs-perl
+	apt install -y liblog-log4perl-perl
+	apt install -y libengine-gost-openssl
