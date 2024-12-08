@@ -36,3 +36,6 @@ deps-install:
 	apt install -y libguestfs-perl
 	apt install -y liblog-log4perl-perl
 	apt install -y libengine-gost-openssl
+
+.PHONY: full-install
+full-install: deps-install install
