@@ -14,7 +14,7 @@ my $scfg = PVE::Storage::config();
 my $snippetsdir = '';
 foreach my $id (sort keys %{$scfg->{ids}}) {
     my $volume_cfg = $scfg->{ids}->{$id};
-    next if !$volume_cfg->{path};
+    next if !grep {$_ eq 'snippets'} keys %{$volume_cfg->{content}};
     my $plugin = PVE::Storage::Plugin->lookup($volume_cfg->{type});
     $snippetsdir = $plugin->get_subdir($volume_cfg, 'snippets');
     next if $snippetsdir eq '';
