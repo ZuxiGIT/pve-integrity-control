@@ -16,6 +16,7 @@ use strict;
 use warnings;
 
 use DDP;
+use File::Copy;
 use PVE::Cluster;
 use PVE::IntegrityControl::Log qw(debug error);
 
@@ -102,7 +103,7 @@ sub load {
 
 	if (!defined $db) {
         debug(__PACKAGE__, "Integrity control database file \"$dbpath\" does not exist");
-        die "Failed to load Integrity control database file\n";
+        die "Failed to load Integrity control database file for $vmid VM";
     }
 
     debug(__PACKAGE__, "loaded IntegirtyControl db for vmid:$vmid\n" . np($db));
@@ -126,6 +127,25 @@ sub create {
 
     debug(__PACKAGE__, "\"create\" was called with params vmid:$vmid");
     PVE::IntegrityControl::DB::write($vmid, {});
+}
+
+sub sync{
+    my ($vmid, $targetnode) = @_;
+
+    #test if DB exists
+    load($vmid);
+
+    my $basedir = "/etc/pve/";
+    my $currdb = $basedir .__db_path($vmid);
+    my $newdb = $basedir . __db_path($vmid, $targetnode);
+
+    debug(__PACKAGE__, "\"sync\" curr_db:$currdb, new_db:$newdb");
+
+    if (!copy($currdb, $newdb))
+    {
+        error(__PACKAGE__, "Failed to synchronie db with $targetnode for $vmid");
+        die;
+    }
 }
 
 1;

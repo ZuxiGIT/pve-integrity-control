@@ -107,6 +107,7 @@ sub read_file {
 
     my @roots = $guestfs_handle->inspect_get_roots();
     if (!grep { $_ eq $disk } @roots) {
+        debug(__PACKAGE__, "\"read_file\" available disks:\n" . np(@roots));
         error(__PACKAGE__, "\"read_file\" unknown VM disk $disk");
         die "Failed to get file hash\n";
     }

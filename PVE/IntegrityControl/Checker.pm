@@ -19,6 +19,8 @@ sub __init_openssl_gost_engine {
     my $engine = Net::SSLeay::ENGINE_by_id("gost");
     debug(__PACKAGE__, "\"__init_openssl_gost_engine\" value corresponding to GOST engine: $engine");
 
+    die "failed to obtain GOST engine handler" if !$engine;
+
     # 0x0080 magic constans means ENGINE_METHOD_DIGESTS
     if (!Net::SSLeay::ENGINE_set_default($engine, 0x0080)) {
         error(__PACKAGE__, "\"__init_openssl_gost_engine\" failed to set GOST engine digests method");
@@ -32,7 +34,7 @@ sub __init_openssl_gost_engine {
     debug(__PACKAGE__, " available digests:\n " . np($ss));
     $digest = Net::SSLeay::EVP_get_digestbyname("md_gost12_256");
 
-    die "Failed to obtain GOST digest handler" if not $digest;
+    die "Failed to obtain GOST engine digest handler" if not $digest;
 }
 
 sub __get_hash {
@@ -61,10 +63,11 @@ sub __get_config_file_content {
 
     debug(__PACKAGE__, "\"__get_config_file_content\" was called for vmid:$vmid");
 
-    my $path = PVE::QemuConfig->cfs_config_path($vmid);
-    debug(__PACKAGE__, "\"__get_config_file_content\" path: $path");
+    my $conf = PVE::QemuConfig->load_current_config($vmid, 1);
+    debug(__PACKAGE__, "\"__get_config_file_content\" conf:\n" . np($conf));
+    delete $conf->{lock} if $conf->{lock};
 
-    my $raw = PVE::Cluster::get_config($path);
+    my $raw = PVE::QemuServer::write_vm_config(undef, $conf);
     die "Error read config file for $vmid" if $raw eq '';
     debug(__PACKAGE__, "\"__get_config_file_content\" content\n$raw");
 
@@ -105,7 +108,7 @@ sub check {
 sub fill_absent_hashes {
     my ($vmid, $db) = @_;
 
-    debug(__PACKAGE__, "\"fill_absent_hashes\" was called with params vmid:$vmid");
+    debug(__PACKAGE__, "\"fill_absent_hashes\" was called with params vmid:$vmid db:\n" . np($db));
 
     __init_openssl_gost_engine() if not $digest;
 
@@ -113,10 +116,12 @@ sub fill_absent_hashes {
 
     foreach my $disk (keys %$db) {
         if ($disk eq 'config') {
+            next if $db->{config} ne '';
             $db->{config} = __get_hash(__get_config_file_content($vmid));
             next;
         }
         foreach my $file (keys %{$db->{$disk}}) {
+            next if $db->{$disk}->{$file} ne '';
             $db->{$disk}->{$file} = __get_hash(PVE::IntegrityControl::GuestFS::read_file("$disk:$file"));
         }
     }

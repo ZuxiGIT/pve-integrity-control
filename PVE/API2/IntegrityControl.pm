@@ -189,7 +189,7 @@ __PACKAGE__->register_method ({
         my %ic_files_hash;
 
         if ($files) {
-            my @ic_files_list = PVE::Tools::split_list($param->{files});
+            my @ic_files_list = PVE::Tools::split_list($files);
 
             foreach my $file_location (sort @ic_files_list) {
                 my ($disk, $file_path) = split(':', $file_location);
@@ -205,15 +205,15 @@ __PACKAGE__->register_method ({
 sub __set_ic_objects {
     my ($vmid, $ic_files, $config) = @_;
 
-    debug(__PACKAGE__, "\"__set_ic_obects\" was called with params vmid:$vmid, files:\n" . np($ic_files));
+    debug(__PACKAGE__, "\"__set_ic_obects\" was called");
 
     my $db;
     eval {
         $db = PVE::IntegrityControl::DB::load($vmid);
     };
     if ($@) {
-        info(__PACKAGE__, "\"__set_ic_objects\" there is no IntegrityControl DB for $vmid VM");
-        info(__PACKAGE__, "\"__set_ic_objects\" creating new one for $vmid VM");
+        info(__PACKAGE__, "There is no IntegrityControl DB for $vmid VM");
+        info(__PACKAGE__, "Creating new one for $vmid VM");
         PVE::IntegrityControl::DB::create($vmid)
     }
 
@@ -246,7 +246,12 @@ __PACKAGE__->register_method ({
         properties => {
             node => PVE::JSONSchema::get_standard_option('pve-node'),
             vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
-            files => PVE::JSONSchema::get_standard_option('pve-ic-files'),
+            files => PVE::JSONSchema::get_standard_option('pve-ic-files', {
+                optional => 1}),
+            config => {
+                type => 'boolean',
+                optional => 1,
+            }
         },
     },
     returns => {
@@ -301,10 +306,10 @@ sub __unset_ic_objects {
 }
 
 __PACKAGE__->register_method ({
-    name => 'ic_files_get',
-    path => '{vmid}/objects',
+    name => 'ic_get_db',
+    path => '{vmid}/db',
     method => 'GET',
-    description => 'Get VM files for integrity contol',
+    description => 'Get integrity contol db for specified VM',
     protected => 1,
     proxyto => 'node',
     parameters => {
@@ -324,16 +329,7 @@ __PACKAGE__->register_method ({
         my $vmid = extract_param($param, 'vmid');
 
         my $db = PVE::IntegrityControl::DB::load($vmid);
-        my $raw = '';
-
-        foreach my $disk (sort keys %$db) {
-            foreach my $path (sort keys %{$db->{$disk}}) {
-                $raw .= "$disk:$path\n";
-            }
-        }
-        # removing last whitespace
-        $raw =~ s/\s+$//g;
-        return $raw;
+        return np($db);
     }
 });
 

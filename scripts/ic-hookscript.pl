@@ -26,8 +26,7 @@ if ($phase eq 'pre-start') {
         PVE::IntegrityControl::Checker::check($vmid);
     };
     if ($@) {
-        debug("PVE::IntegrityControl::Hookscript", "failed with : $@");
-        error("PVE::IntegrityControl::Hookscript", "failed to check vm with vmid:$vmid");
+        debug("PVE::IntegrityControl::Hookscript", "error: $@");
         error("PVE::IntegrityControl::Hookscript", "vm start is not permitted");
         exit(1);
     }
