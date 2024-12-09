@@ -37,5 +37,9 @@ deps-install:
 	apt install -y liblog-log4perl-perl
 	apt install -y libengine-gost-openssl
 
+.PHONY: patches-install
+patches-install:
+	scripts/install_patches.sh
+
 .PHONY: full-install
-full-install: deps-install install
+full-install: deps-install patches-install install
