@@ -7,8 +7,9 @@ TMP_DIR="$(mktemp -d -p /tmp)"
 echo "INFO: Working dir: $TMP_DIR"
 
 if ! type git >& /dev/null; then
-    echo "ERROR: git is not installed"
-    exit 1
+    echo "INFO: git is not installed"
+    echo "INFO: installing..."
+    apt install -y git
 fi
 
 if ! type mk-build-deps >& /dev/null; then
