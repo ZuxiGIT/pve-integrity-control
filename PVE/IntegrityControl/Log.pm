@@ -23,18 +23,15 @@ sub __get_logfile_path {
 }
 
 sub __get_rotator {
-    if (!defined $rotator) {
-        $rotator = new Logfile::Rotate(
-            File => __get_logfile_path(),
-            Count => 7,
-            Gzip => 'lib',
-            Post => sub {
-                my ($old, $new) = @_;
-                info(__PACKAGE__, "logfile was rotated: oldfile:$old, newfile:$new");
-            },
-        );
-    }
-    return $rotator;
+    return new Logfile::Rotate(
+        File => __get_logfile_path(),
+        Count => 7,
+        Gzip => 'lib',
+        Post => sub {
+            my ($old, $new) = @_;
+            info(__PACKAGE__, "logfile was rotated: oldfile:$old, newfile:$new");
+        },
+    );
 }
 
 sub __possibly_rotate {
@@ -51,19 +48,19 @@ sub info {
     get_logger($comp)->info($what);
 }
 
-sub debug{
+sub debug {
     my ($comp, $what) = @_;
     __possibly_rotate();
     get_logger($comp)->debug($what);
 }
 
-sub warn{
+sub warn {
     my ($comp, $what) = @_;
     __possibly_rotate();
     get_logger($comp)->warn($what);
 }
 
-sub error{
+sub error {
     my ($comp, $what) = @_;
     __possibly_rotate();
     get_logger($comp)->error($what);
