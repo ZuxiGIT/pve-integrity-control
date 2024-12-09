@@ -35,16 +35,6 @@ sub __parse_ic_filedb {
 
     my $res = {};
 
-    my $handle_error = sub {
-	    my ($msg) = @_;
-
-	    if ($strict) {
-	        die $msg;
-	    } else {
-	        warn $msg;
-	    }
-    };
-
     $filename =~ m|/qemu-server/integrity-control/(\d+)\.conf$|
 	|| die "Got invalid ic db filepath: '$filename'";
 
@@ -57,11 +47,11 @@ sub __parse_ic_filedb {
             my ($file_location, $hash) = split(/ /, $line);
             my ($disk, $file_path) = split(':', $file_location);
             $res->{$disk}->{$file_path} = $hash;
-        } elsif ($line =~ m|^config: \S+$|) {
+        } elsif ($line =~ m|^config \S+$|) {
             my (undef, $hash) = split(/ /, $line);
             $res->{config} = $hash;
         } else {
-	        $handle_error->("vm $vmid - unable to parse ic db: $line\n");
+	        die "vm $vmid - unable to parse ic db: $line\n";
         }
     }
     return $res;
@@ -73,7 +63,7 @@ sub __write_ic_filedb {
     my $raw = '';
     foreach my $disk (sort keys %$db) {
         if ($disk eq 'config') {
-            $raw .= "config: $db->{config}";
+            $raw .= "config $db->{config}";
             next;
         }
         foreach my $file (sort keys %{$db->{$disk}}) {
