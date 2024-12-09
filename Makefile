@@ -36,6 +36,7 @@ deps-install:
 	apt install -y libguestfs-perl
 	apt install -y liblog-log4perl-perl
 	apt install -y libengine-gost-openssl
+	apt install -y liblogfile-rotate-perl
 
 .PHONY: patches-install
 patches-install:
