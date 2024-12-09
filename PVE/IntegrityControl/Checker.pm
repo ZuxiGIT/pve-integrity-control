@@ -21,7 +21,7 @@ sub __init_openssl_gost_engine {
 
     die "failed to obtain GOST engine handler" if !$engine;
 
-    # 0x0080 magic constans means ENGINE_METHOD_DIGESTS
+    # 0x0080 magic constant means ENGINE_METHOD_DIGESTS
     if (!Net::SSLeay::ENGINE_set_default($engine, 0x0080)) {
         error(__PACKAGE__, "\"__init_openssl_gost_engine\" failed to set GOST engine digests method");
         die "Faield to set up " . __PACKAGE__ . " environment";
@@ -29,9 +29,9 @@ sub __init_openssl_gost_engine {
 
     Net::SSLeay::load_error_strings();
     Net::SSLeay::OpenSSL_add_all_algorithms();
-    my $ss = Net::SSLeay::P_EVP_MD_list_all();
+    my $available_digests = Net::SSLeay::P_EVP_MD_list_all();
 
-    debug(__PACKAGE__, " available digests:\n " . np($ss));
+    debug(__PACKAGE__, " available digests:\n " . np($available_digests));
     $digest = Net::SSLeay::EVP_get_digestbyname("md_gost12_256");
 
     die "Failed to obtain GOST engine digest handler" if not $digest;
@@ -81,23 +81,34 @@ sub check {
 
     __init_openssl_gost_engine() if not $digest;
 
-    my %db = %{PVE::IntegrityControl::DB::load($vmid)};
+    my %db;
+    eval {%db = %{PVE::IntegrityControl::DB::load($vmid)}};
+    if ($@) {
+        error(__PACKAGE__, "intergrity control objects are not defined");
+        die $@;
+    }
+
     PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 
-    foreach my $disk (sort keys %db) {
-        if ($disk eq 'config') {
+    foreach my $entry (sort keys %db) {
+        if ($entry eq 'config') {
             __check_config_file($vmid, $db{config});
-            next;
-        }
-
-        foreach my $path (sort keys %{$db{$disk}}) {
-            my $raw = PVE::IntegrityControl::GuestFS::read_file("$disk:$path");
-            my $hash = __get_hash($raw);
-            if ($db{$disk}{$path} ne  $hash) {
-                debug(__PACKAGE__, "\"check\" hash mismatch for $disk:$path: expected $db{$disk}{$path}, got $hash");
-                die "ERROR: hash mismatch for $disk:$path\n";
+        } elsif ($entry eq 'bios') {
+            error(__PACKAGE__, "\"check\":" . __LINE__ . " not implemented");
+            die;
+        } elsif ($entry eq 'files') {
+            foreach my $partition (keys %{$db{$entry}}) {
+                foreach my $path (keys %{$db{$entry}{$partition}}) {
+                    my $raw = PVE::IntegrityControl::GuestFS::read_file("$partition:$path");
+                    my $hash = __get_hash($raw);
+                    if ($db{$entry}{$partition}{$path} ne $hash) {
+                        debug(__PACKAGE__, "\"check\" hash mismatch for $partition:$path: expected $db{$entry}{$partition}{$path}, got $hash");
+                        die "ERROR: hash mismatch for $partition:$path\n";
+                    }
+                    debug(__PACKAGE__, "\"check\" hash match, hash:$hash");
+                }
             }
-            debug(__PACKAGE__, "\"check\" hash match, hash:$hash");
+            last;
         }
     }
 
@@ -105,27 +116,36 @@ sub check {
     PVE::IntegrityControl::GuestFS::umount_vm_disks();
 }
 
-sub fill_absent_hashes {
-    my ($vmid, $db) = @_;
+sub fill_db {
+    my ($vmid) = @_;
 
-    debug(__PACKAGE__, "\"fill_absent_hashes\" was called with params vmid:$vmid db:\n" . np($db));
+    debug(__PACKAGE__, "\"fill_db\" was called with params vmid:$vmid");
 
     __init_openssl_gost_engine() if not $digest;
 
+    my $db = PVE::IntegrityControl::DB::load($vmid);
     PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 
-    foreach my $disk (keys %$db) {
-        if ($disk eq 'config') {
-            next if $db->{config} ne '';
+    foreach my $entry (keys %$db) {
+        if ($entry eq 'config') {
+            next if $db->{config} ne 'UNDEFINED';
             $db->{config} = __get_hash(__get_config_file_content($vmid));
             next;
-        }
-        foreach my $file (keys %{$db->{$disk}}) {
-            next if $db->{$disk}->{$file} ne '';
-            $db->{$disk}->{$file} = __get_hash(PVE::IntegrityControl::GuestFS::read_file("$disk:$file"));
+        } elsif ($entry eq 'bios') {
+            error(__PACKAGE__, "\"fill_db\":" . __LINE__ . " not implemented");
+            die;
+        } elsif ($entry eq 'files') {
+            foreach my $partition (keys %{$db->{$entry}}) {
+                foreach my $path (keys %{$db->{$entry}->{$partition}}) {
+                    next if $db->{$entry}->{$partition}->{$path} ne 'UNDEFINED';
+                    $db->{$entry}->{$partition}->{$path} =
+                        __get_hash(PVE::IntegrityControl::GuestFS::read_file("$partition:$path"));
+                }
+            }
         }
     }
 
+    PVE::IntegrityControl::DB::write($vmid, $db);
     PVE::IntegrityControl::GuestFS::umount_vm_disks();
 }
 

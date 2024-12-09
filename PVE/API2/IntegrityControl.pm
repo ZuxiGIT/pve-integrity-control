@@ -193,8 +193,8 @@ __PACKAGE__->register_method ({
             my @ic_files_list = PVE::Tools::split_list($files);
 
             foreach my $file_location (sort @ic_files_list) {
-                my ($disk, $file_path) = split(':', $file_location);
-                push(@{$ic_files_hash{$disk}}, $file_path);
+                my ($partition, $path) = split(':', $file_location);
+                push(@{$ic_files_hash{$partition}}, $path);
             }
         }
 
@@ -208,31 +208,23 @@ sub __set_ic_objects {
 
     debug(__PACKAGE__, "\"__set_ic_obects\" was called");
 
-    my $db;
-    eval {
-        $db = PVE::IntegrityControl::DB::load($vmid);
-    };
-    if ($@) {
-        info(__PACKAGE__, "There is no IntegrityControl DB for $vmid VM");
-        info(__PACKAGE__, "Creating new one for $vmid VM");
-        PVE::IntegrityControl::DB::create($vmid)
-    }
+    my $db = PVE::IntegrityControl::DB::load_or_create($vmid);
 
-    foreach my $disk (sort keys %$ic_files) {
-        foreach my $file_path (sort @{$ic_files->{$disk}}) {
-            die "ERROR: Integrity control object redefinition [disk: $disk file path: $file_path]\n"
-            if exists $db->{$disk}->{$file_path};
-            $db->{$disk}->{$file_path} = '';
+    foreach my $partition (sort keys %$ic_files) {
+        foreach my $path (sort @{$ic_files->{$partition}}) {
+            die "ERROR: Integrity control object redefinition [partition: $partition path: $path]\n"
+            if exists $db->{files}->{$partition}->{$path};
+            $db->{files}->{$partition}->{$path} = 'UNDEFINED';
         }
     }
 
     if ($config) {
         die "ERROR: Integrity control object redefinition [config]\n" if exists $db->{config};
-        $db->{config} = '';
+        $db->{config} = 'UNDEFINED';
     }
 
-    PVE::IntegrityControl::Checker::fill_absent_hashes($vmid, $db);
     PVE::IntegrityControl::DB::write($vmid, $db);
+    PVE::IntegrityControl::Checker::fill_db($vmid);
 }
 
 __PACKAGE__->register_method ({

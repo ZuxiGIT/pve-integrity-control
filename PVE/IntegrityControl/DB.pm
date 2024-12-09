@@ -1,15 +1,35 @@
 package PVE::IntegrityControl::DB;
 
-# It is a workaround to integrate a IntegrityControl database into PVE cluster fs
-# To achieve this config file storage is exploited: integrity control database (files with hashes) are stored in
-# /etc/pve/<node>/qemu-server/intergrity-control directory under <vmid>.conf name
-# a record in this db has format
-# |disk:path hash|
-#  ^    ^     ^
-#  |    |     |
-#  |    |     +-- a file sha256 hash
-#  |    |
-#  +-- a file location, passed by user via cli or REST api
+# To store IntegrityControl database PVE cluster fs (pmxfs) is used.
+# IntegrityControl database associated with some <vmid> VM is stored in
+# /etc/pve/nodes/<node>/qemu-server/intergrity-control directory under <vmid>.conf name.
+#
+# db file for some <vmid> VM has following structure:
+#
+# config <hash>
+# bios <hash>
+# files
+#   <partition>:<path> <hash>
+#       ^         ^     ^
+#       |         |     |
+#       |         |     +-- a file hash, computed using gost12 256 bit algorithm
+#       |         +--- file location (e.g. /path/to/file)
+#       +-- partition containing file (e.g. /dev/sda1)
+#
+# after parsing file db hash has following structure:
+# db {
+#   bios => <hash>,
+#   config => <hash>,
+#   files => {
+#     <partition#1> => {
+#       <path#1> => <hash>,
+#       <file#2> => <hash>,
+#     },
+#     <partition#2> => {
+#       <path#3> => <hash>,
+#     },
+#   },
+# }
 #
 
 use strict;
@@ -18,7 +38,7 @@ use warnings;
 use DDP;
 use File::Copy;
 use PVE::Cluster;
-use PVE::IntegrityControl::Log qw(debug error);
+use PVE::IntegrityControl::Log qw(debug error info);
 
 my $nodename = PVE::INotify::nodename();
 
@@ -33,6 +53,9 @@ sub __parse_ic_filedb {
 
     return if !defined($raw);
 
+    debug(__PACKAGE__, "\"__parse_ic_filedb\" filename:$filename");
+    debug(__PACKAGE__, "\"__parse_ic_filedb\" raw:[$raw]");
+
     my $res = {};
 
     $filename =~ m|/qemu-server/integrity-control/(\d+)\.conf$|
@@ -43,13 +66,17 @@ sub __parse_ic_filedb {
     my @lines = split(/\n/, $raw);
     foreach my $line (@lines) {
 	    next if $line =~ m/^\s*$/;
-        if ($line =~ m|^/dev/\w+:.+ \S+$|) {
-            my ($file_location, $hash) = split(/ /, $line);
-            my ($disk, $file_path) = split(':', $file_location);
-            $res->{$disk}->{$file_path} = $hash;
-        } elsif ($line =~ m|^config \S+$|) {
-            my (undef, $hash) = split(/ /, $line);
+        if ($line =~ m|^bios (\w+)$|) {
+            my $hash = $1;
+            $res->{bios} = $hash;
+        } elsif ($line =~ m|^config (\w+)$|) {
+            my $hash = $1;
             $res->{config} = $hash;
+        } elsif ($line =~ m|^files$|) {
+            next
+        } elsif ($line =~ m|^\s+(/dev/\w+):((?:\/[a-z_\-\s0-9\.]+)+) (\w+)$|) {
+            my ($partition, $path, $hash) = ($1, $2, $3);
+            $res->{files}->{$partition}->{$path} = $hash;
         } else {
 	        die "vm $vmid - unable to parse ic db: $line\n";
         }
@@ -61,14 +88,24 @@ sub __write_ic_filedb {
     my ($filename, $db) = @_;
 
     my $raw = '';
-    foreach my $disk (sort keys %$db) {
-        if ($disk eq 'config') {
-            $raw .= "config $db->{config}";
-            next;
-        }
-        foreach my $file (sort keys %{$db->{$disk}}) {
-            my $hash = $db->{$disk}->{$file};
-            $raw .= "$disk:$file $hash\n";
+    foreach my $entry (sort keys %$db) {
+        if ($entry eq 'config') {
+            $raw .= "config $db->{config}\n";
+        } elsif ($entry eq 'bios' ) {
+            # currently is not implemented
+            $raw .= "bios $db->{bios}\n";
+        } elsif ($entry eq 'files') {
+            $raw .= "files\n";
+            foreach my $partition (sort keys %{$db->{$entry}}) {
+                foreach my $path (sort keys %{$db->{$entry}->{$partition}}) {
+                    my $hash = $db->{$entry}->{$partition}->{$path};
+                    $raw .= "\t$partition:$path $hash\n";
+                }
+            }
+            last;
+        } else {
+            error(__PACKAGE__, "\"__write_ic_filedb\" unreachable");
+            die __PACKAGE__ . " unreachable";
         }
     }
 
@@ -82,12 +119,27 @@ sub __db_path {
     return "nodes/$node/qemu-server/integrity-control/$vmid.conf";
 }
 
+sub load_or_create {
+    my ($vmid, $node) = @_;
+
+    my $db;
+    eval { $db = PVE::IntegrityControl::DB::load($vmid, $node)};
+    if ($@) {
+        info(__PACKAGE__, "There is no IntegrityControl DB for $vmid VM");
+        info(__PACKAGE__, "Creating new one for $vmid VM");
+        PVE::IntegrityControl::DB::create($vmid);
+        $db = {}
+    }
+    return $db;
+}
+
 sub load {
     my ($vmid, $node) = @_;
 
     debug(__PACKAGE__, "\"load\" was called with params vmid:$vmid");
 
     my $dbpath = __db_path($vmid);
+    debug(__PACKAGE__, "\"load\" db path:$dbpath");
 
     my $db = PVE::Cluster::cfs_read_file($dbpath);
 
@@ -96,7 +148,8 @@ sub load {
         die "Failed to load Integrity control database file for $vmid VM";
     }
 
-    debug(__PACKAGE__, "loaded IntegirtyControl db for vmid:$vmid\n" . np($db));
+    debug(__PACKAGE__, "\"load\" success");
+    debug(__PACKAGE__, "\"load\" IntegirtyControl db\n" . np($db));
 
     return $db;
 }
@@ -105,11 +158,13 @@ sub write {
     my ($vmid, $db) = @_;
 
     debug(__PACKAGE__, "\"write\" was called with params vmid:$vmid");
+    debug(__PACKAGE__, "\"write\" IntegirtyControl db\n" . np($db));
 
     my $dbpath = __db_path($vmid);
+    debug(__PACKAGE__, "\"write\" db path:$dbpath");
 
     PVE::Cluster::cfs_write_file($dbpath, $db);
-    debug(__PACKAGE__, "wrote IntegirtyControl db for vmid:$vmid \n" . np($db));
+    debug(__PACKAGE__, "\"write\" success");
 }
 
 sub create {
