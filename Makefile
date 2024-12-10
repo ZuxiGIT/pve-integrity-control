@@ -30,6 +30,10 @@ test:
 	PVE_GENERATING_DOCS=1 perl -I. ./ic verifyapi
 	# $(MAKE) -C test
 
+.PHONY: check-pve-version
+check-pve-version:
+	pveversion | awk -F '/' '{print $$2}'
+
 .PHONY: deps-install
 deps-install:
 	scripts/install_deps.sh
