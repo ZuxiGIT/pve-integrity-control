@@ -3,7 +3,7 @@
 set -e
 
 if ! type apt >& /dev/null; then
-    echo "package manager 'apt' is missing"
+    echo "Error: package manager 'apt' is missing"
     exit 1
 fi
 

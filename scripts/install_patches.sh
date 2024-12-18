@@ -29,7 +29,7 @@ patch_component () {
 
     pushd "$COMP" || exit 1
 
-    mk-build-deps --install
+    mk-build-deps --install >& /dev/null
     if [ -d 'src' ]; then
         pushd src || exit 1
         make install
