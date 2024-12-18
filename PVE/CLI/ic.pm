@@ -3,18 +3,17 @@ package PVE::CLI::ic;
 use strict;
 use warnings;
 
+use DDP;
 use PVE::INotify;
 use PVE::Tools qw(extract_param);
 use PVE::JSONSchema qw(get_standard_option);
 use PVE::RPCEnvironment;
 
 use PVE::API2::IntegrityControl;
+use PVE::IntegrityControl::DB;
 
 use PVE::CLIHandler;
 use base qw(PVE::CLIHandler);
-
-my $nodename = PVE::INotify::nodename();
-my %node = (node => $nodename);
 
 sub setup_environment {
     PVE::RPCEnvironment->setup_default_cli_env();
@@ -36,6 +35,7 @@ __PACKAGE__->register_method ({
     },
     code => sub {
         system('less /var/log/pve-integrity-control/log.log');
+        return
     }
 });
 
@@ -81,22 +81,48 @@ __PACKAGE__->register_method ({
     }
 });
 
+__PACKAGE__->register_method ({
+    name => 'get_db',
+    path => 'get_db',
+    method => 'GET',
+    description => 'Get integrity contol db for specified VM',
+    protected => 1,
+    proxyto => 'node',
+    parameters => {
+        additionalProperties => 0,
+        properties => {
+            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
+        },
+    },
+    returns => {
+        type => 'string'
+    },
+    code => sub {
+        my ($param) = @_;
+
+        my $vmid = extract_param($param, 'vmid');
+
+        my $db = PVE::IntegrityControl::DB::load($vmid);
+        return np($db);
+    }
+});
+
 
 our $cmddef = {
-    status => ['PVE::API2::IntegrityControl', 'ic_status', ['vmid'], { %node }, sub {
+    status => ['PVE::API2::IntegrityControl', 'ic_status', ['vmid'], { }, sub {
         my $status = shift;
         print "status: $status\n";
     }],
-    enable => ['PVE::API2::IntegrityControl', 'ic_enable', ['vmid'], { %node }],
-    disable => ['PVE::API2::IntegrityControl', 'ic_disable', ['vmid'], { %node }],
-    'set-objects' => ['PVE::API2::IntegrityControl', 'ic_files_set',  ['vmid'], { %node}],
-    'unset-objects' => ['PVE::API2::IntegrityControl', 'ic_files_unset',  ['vmid'], { %node}],
-    'get-db' => ['PVE::API2::IntegrityControl', 'ic_get_db',  ['vmid'], { %node}, sub {
+    enable => ['PVE::API2::IntegrityControl', 'ic_enable', ['vmid'], {}],
+    disable => ['PVE::API2::IntegrityControl', 'ic_disable', ['vmid'], {}],
+    'set-objects' => ['PVE::API2::IntegrityControl', 'ic_objects_set',  ['vmid'], {}],
+    'unset-objects' => ['PVE::API2::IntegrityControl', 'ic_objects_unset',  ['vmid'], {}],
+    'get-db' => [ __PACKAGE__, 'get_db',  ['vmid'], {}, sub {
         my $res = shift;
         print "database:\n$res";
     }],
-    'open-journal' => [__PACKAGE__, 'less_log', [], {}],
-    'sync-db' => [__PACKAGE__, 'sync_db', [ 'target' ], { %node }, sub {
+    'open-journal' => [ __PACKAGE__, 'less_log', [], {}],
+    'sync-db' => [ __PACKAGE__, 'sync_db', [ 'target' ], {}, sub {
         my $status = shift;
         print "status: $status\n";
     }],

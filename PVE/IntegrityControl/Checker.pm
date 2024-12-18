@@ -74,8 +74,16 @@ sub __get_config_file_content {
     return $raw;
 }
 
+sub __check_input {
+    my $vmid = shift;
+
+    die "Passed vmid [$vmid] is not valid\n" if not $vmid =~ m/^\d+$/;
+}
+
 sub check {
     my ($vmid) = @_;
+
+    __check_input($vmid);
 
     debug(__PACKAGE__, "\"check\" was called with params vmid:$vmid");
 
@@ -88,7 +96,6 @@ sub check {
         die $@;
     }
 
-    PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 
     foreach my $entry (sort keys %db) {
         if ($entry eq 'config') {
@@ -97,6 +104,9 @@ sub check {
             error(__PACKAGE__, "\"check\":" . __LINE__ . " not implemented");
             die;
         } elsif ($entry eq 'files') {
+
+            PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
+
             foreach my $partition (keys %{$db{$entry}}) {
                 foreach my $path (keys %{$db{$entry}{$partition}}) {
                     my $raw = PVE::IntegrityControl::GuestFS::read_file("$partition:$path");
@@ -108,23 +118,28 @@ sub check {
                     debug(__PACKAGE__, "\"check\" hash match, hash:$hash");
                 }
             }
+
+            PVE::IntegrityControl::GuestFS::umount_vm_disks();
+
             last;
         }
     }
 
     info(__PACKAGE__, "\"check\" passed successfully");
-    PVE::IntegrityControl::GuestFS::umount_vm_disks();
+
+    return 0;
 }
 
 sub fill_db {
     my ($vmid) = @_;
+
+    __check_input($vmid);
 
     debug(__PACKAGE__, "\"fill_db\" was called with params vmid:$vmid");
 
     __init_openssl_gost_engine() if not $digest;
 
     my $db = PVE::IntegrityControl::DB::load($vmid);
-    PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 
     foreach my $entry (keys %$db) {
         if ($entry eq 'config') {
@@ -135,6 +150,9 @@ sub fill_db {
             error(__PACKAGE__, "\"fill_db\":" . __LINE__ . " not implemented");
             die;
         } elsif ($entry eq 'files') {
+
+            PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
+
             foreach my $partition (keys %{$db->{$entry}}) {
                 foreach my $path (keys %{$db->{$entry}->{$partition}}) {
                     next if $db->{$entry}->{$partition}->{$path} ne 'UNDEFINED';
@@ -142,11 +160,13 @@ sub fill_db {
                         __get_hash(PVE::IntegrityControl::GuestFS::read_file("$partition:$path"));
                 }
             }
+
+            PVE::IntegrityControl::GuestFS::umount_vm_disks();
+
         }
     }
 
     PVE::IntegrityControl::DB::write($vmid, $db);
-    PVE::IntegrityControl::GuestFS::umount_vm_disks();
 }
 
 1;

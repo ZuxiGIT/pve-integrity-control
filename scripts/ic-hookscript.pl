@@ -3,6 +3,7 @@
 use strict;
 use warnings;
 
+use Time::HiRes;
 use PVE::IntegrityControl::Checker;
 use PVE::IntegrityControl::Log qw(debug error info);
 
@@ -10,6 +11,23 @@ use PVE::IntegrityControl::Log qw(debug error info);
 my $vmid = shift;
 # Second argument is the phase
 my $phase = shift;
+
+sub check_params {
+    if (not $vmid =~ m/^\d+$/) {
+        die "First parameter '$vmid' is not an integer\n";
+    }
+
+    if (!grep { $_ eq $phase } ('pre-start', 'pre-stop', 'post-start', 'post-stop')) {
+        die "Second parameter '$phase' is not a valid phase\n";
+    }
+
+    # remainign params
+    if (@ARGV != 0) {
+        die "Expected 2 params, but got " . (2 + scalar(@ARGV)) . "\n";
+    }
+}
+
+check_params();
 
 if ($phase eq 'pre-start') {
 
@@ -23,7 +41,10 @@ if ($phase eq 'pre-start') {
         exit(0);
     }
     eval {
+        my $time = Time::HiRes::time();
         PVE::IntegrityControl::Checker::check($vmid);
+        my $total = Time::HiRes::time() - $time;
+        info("PVE::IntegrityControl::Hookscript", "total: $total sec");
     };
     if ($@) {
         debug("PVE::IntegrityControl::Hookscript", "error: $@");
@@ -32,17 +53,18 @@ if ($phase eq 'pre-start') {
     }
 
     info("PVE::IntegrityControl::Hookscript", "vm start is permitted");
-    exit(0);
 
 } elsif ($phase eq 'post-start') {
 
     # Second phase 'post-start' will be executed after the guest
     # successfully started.
     if ($ENV{PVE_MIGRATED_FROM}) {
-        debug("PVE::IntegrityControl::Hookscript", "vm started, but is suspended until the end of disk and vmstate transfer");
+        info("PVE::IntegrityControl::Hookscript", "vm started, but is suspended until the end of disk and vmstate transfer");
     } else {
         debug("PVE::IntegrityControl::Hookscript", "vm started successfully");
     }
+
+    debug("PVE::IntegrityControl::Hookscript", "Phase '$phase': do nothing...");
 
 } elsif ($phase eq 'pre-stop') {
 
@@ -50,7 +72,7 @@ if ($phase eq 'pre-start') {
     # via the API. Will not be executed if the guest is stopped from
     # within e.g., with a 'poweroff'
 
-    print "$vmid will be stopped.\n";
+    debug("PVE::IntegrityControl::Hookscript", "Phase '$phase': do nothing...");
 
 } elsif ($phase eq 'post-stop') {
 
@@ -58,10 +80,10 @@ if ($phase eq 'pre-start') {
     # This should even be executed in case the guest crashes or stopped
     # unexpectedly.
 
-    print "$vmid stopped. Doing cleanup.\n";
+    debug("PVE::IntegrityControl::Hookscript", "Phase '$phase': do nothing...");
 
 } else {
-    die "got unknown phase '$phase'\n";
+    die "Unknown phase '$phase'\n";
 }
 
 exit(0);

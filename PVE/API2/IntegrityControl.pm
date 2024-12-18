@@ -20,6 +20,9 @@ use PVE::API2::Qemu;
 use PVE::RESTHandler;
 use base qw(PVE::RESTHandler);
 
+my $nodename = PVE::INotify::nodename();
+my %node = (node => $nodename);
+
 __PACKAGE__->register_method ({
     name => 'ic_status',
     path => '{vmid}/status/current',
@@ -28,7 +31,6 @@ __PACKAGE__->register_method ({
     parameters => {
         additionalProperties => 0,
         properties => {
-            node => PVE::JSONSchema::get_standard_option('pve-node'),
             vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
         },
     },
@@ -38,10 +40,9 @@ __PACKAGE__->register_method ({
     code => sub {
         my ($param) = @_;
 
-        my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
 
-        debug(__PACKAGE__, "\"status\" was called with params vmid:$vmid, node:$node");
+        debug(__PACKAGE__, "\"status\" was called with params vmid:$vmid");
 
         my $conf = PVE::QemuConfig->load_current_config($vmid);
 
@@ -65,7 +66,6 @@ __PACKAGE__->register_method ({
     parameters => {
         additionalProperties => 0,
         properties => {
-            node => PVE::JSONSchema::get_standard_option('pve-node'),
             vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
         },
     },
@@ -75,7 +75,7 @@ __PACKAGE__->register_method ({
     code => sub {
         my ($param) = @_;
 
-        my $vmid = $param->{vmid};
+        my $vmid = extract_param($param, 'vmid');
 
         debug(__PACKAGE__, "\"enable\" was called with params vmid:$vmid");
 
@@ -95,7 +95,7 @@ __PACKAGE__->register_method ({
 
         die "ERROR: Failed to find 'snippets' dir\n" if $volume eq '';
 
-        return PVE::API2::Qemu->update_vm({%$param,
+        return PVE::API2::Qemu->update_vm({(node => $nodename, vmid => $vmid),
             integrity_control => 1,
             hookscript => "$volume:snippets/$hookscriptname"
         });
@@ -112,7 +112,6 @@ __PACKAGE__->register_method ({
     parameters => {
         additionalProperties => 0,
         properties => {
-            node => PVE::JSONSchema::get_standard_option('pve-node'),
             vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
         },
     },
@@ -121,11 +120,11 @@ __PACKAGE__->register_method ({
     },
     code => sub {
         my ($param) = @_;
-        my $vmid = $param->{vmid};
+        my $vmid = extract_param($param, 'vmid');
 
         debug(__PACKAGE__, "\"disable\" was called with params vmid:$vmid");
 
-        return PVE::API2::Qemu->update_vm({%$param,
+        return PVE::API2::Qemu->update_vm({( node => $nodename, vmid => $vmid),
             integrity_control => 0,
             delete => 'hookscript'
         });
@@ -150,7 +149,7 @@ PVE::JSONSchema::register_standard_option('pve-ic-files', {
 });
 
 __PACKAGE__->register_method ({
-    name => 'ic_files_set',
+    name => 'ic_objects_set',
     path => '{vmid}/objects',
     method => 'PUT',
     description => 'Specify VM files for integrity contol',
@@ -159,11 +158,14 @@ __PACKAGE__->register_method ({
     parameters => {
         additionalProperties => 0,
         properties => {
-            node => PVE::JSONSchema::get_standard_option('pve-node'),
             vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
             files => PVE::JSONSchema::get_standard_option('pve-ic-files', {
                 optional => 1}),
             config => {
+                type => 'boolean',
+                optional => 1,
+            },
+            bios => {
                 type => 'boolean',
                 optional => 1,
             }
@@ -175,7 +177,6 @@ __PACKAGE__->register_method ({
     code => sub {
         my ($param) = @_;
 
-        my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
         my $files = extract_param($param, 'files');
         my $config = extract_param($param, 'config');
@@ -212,7 +213,7 @@ sub __set_ic_objects {
 
     foreach my $partition (sort keys %$ic_files) {
         foreach my $path (sort @{$ic_files->{$partition}}) {
-            die "ERROR: Integrity control object redefinition [partition: $partition path: $path]\n"
+            die "ERROR: Integrity control object redefinition [partition: $partition, path: $path]\n"
             if exists $db->{files}->{$partition}->{$path};
             $db->{files}->{$partition}->{$path} = 'UNDEFINED';
         }
@@ -228,7 +229,7 @@ sub __set_ic_objects {
 }
 
 __PACKAGE__->register_method ({
-    name => 'ic_files_unset',
+    name => 'ic_objects_unset',
     path => '{vmid}/objects',
     method => 'DELETE',
     description => 'Unspecify VM files for integrity contol',
@@ -237,11 +238,14 @@ __PACKAGE__->register_method ({
     parameters => {
         additionalProperties => 0,
         properties => {
-            node => PVE::JSONSchema::get_standard_option('pve-node'),
             vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
             files => PVE::JSONSchema::get_standard_option('pve-ic-files', {
                 optional => 1}),
             config => {
+                type => 'boolean',
+                optional => 1,
+            },
+            bios => {
                 type => 'boolean',
                 optional => 1,
             }
@@ -253,10 +257,10 @@ __PACKAGE__->register_method ({
     code => sub {
         my ($param) = @_;
 
-        my $node = extract_param($param, 'node');
         my $vmid = extract_param($param, 'vmid');
         my $files = extract_param($param, 'files');
         my $config = extract_param($param, 'config');
+        my $bios = extract_param($param, 'bios');
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;
@@ -266,18 +270,19 @@ __PACKAGE__->register_method ({
             my @ic_files_list = PVE::Tools::split_list($files);
 
             foreach my $file_location (sort @ic_files_list) {
-                my ($disk, $file_path) = split(':', $file_location);
-                push(@{$ic_files_hash{$disk}}, $file_path);
+                $file_location =~ m|^(/dev/\w+):((?:\/[a-z_\-\s0-9\.]+)+)$|;
+                my ($partition, $path) = ($1, $2);
+                push(@{$ic_files_hash{$partition}}, $path);
             }
         }
 
-        __unset_ic_objects($vmid, \%ic_files_hash, $config);
+        __unset_ic_objects($vmid, \%ic_files_hash, $config, $bios);
         return;
     }
 });
 
 sub __unset_ic_objects {
-    my ($vmid, $ic_files, $config) = @_;
+    my ($vmid, $ic_files, $config, $bios) = @_;
 
     my $db = PVE::IntegrityControl::DB::load($vmid);
 
@@ -287,43 +292,22 @@ sub __unset_ic_objects {
         delete $db->{config};
     }
 
-    foreach my $disk (sort keys %$ic_files) {
-        foreach my $file_path (sort @{$ic_files->{$disk}}) {
-            die "ERROR: Integrity control object was not set earlier: [disk: $disk file path: $file_path]\n"
-            if !exists $db->{$disk}->{$file_path};
-            delete $db->{$disk}->{$file_path};
+    if ($bios) {
+        die "ERROR: Integrity control object was not set earlier: [bios]\n"
+        if !exists $db->{bios};
+        delete $db->{bios};
+    }
+
+    foreach my $partition (sort keys %$ic_files) {
+        foreach my $path (sort @{$ic_files->{$partition}}) {
+            die "ERROR: Integrity control object was not set earlier: [partition: $partition file path: $path]\n"
+            if !exists $db->{files}->{$partition}->{$path};
+            delete $db->{files}->{$partition}->{$path};
+            delete $db->{files}->{$partition} if keys %{$db->{files}->{$partition}} == 0;
         }
     }
 
     PVE::IntegrityControl::DB::write($vmid, $db);
 }
-
-__PACKAGE__->register_method ({
-    name => 'ic_get_db',
-    path => '{vmid}/db',
-    method => 'GET',
-    description => 'Get integrity contol db for specified VM',
-    protected => 1,
-    proxyto => 'node',
-    parameters => {
-        additionalProperties => 0,
-        properties => {
-            node => PVE::JSONSchema::get_standard_option('pve-node'),
-            vmid => PVE::JSONSchema::get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
-        },
-    },
-    returns => {
-        type => 'string'
-    },
-    code => sub {
-        my ($param) = @_;
-
-        my $node = extract_param($param, 'node');
-        my $vmid = extract_param($param, 'vmid');
-
-        my $db = PVE::IntegrityControl::DB::load($vmid);
-        return np($db);
-    }
-});
 
 1;

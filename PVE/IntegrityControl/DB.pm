@@ -138,14 +138,14 @@ sub load {
 
     debug(__PACKAGE__, "\"load\" was called with params vmid:$vmid");
 
-    my $dbpath = __db_path($vmid);
+    my $dbpath = __db_path($vmid, $node);
     debug(__PACKAGE__, "\"load\" db path:$dbpath");
 
     my $db = PVE::Cluster::cfs_read_file($dbpath);
 
 	if (!defined $db) {
         debug(__PACKAGE__, "Integrity control database file \"$dbpath\" does not exist");
-        die "Failed to load Integrity control database file for $vmid VM";
+        die "Failed to load Integrity control database file for VM $vmid\n";
     }
 
     debug(__PACKAGE__, "\"load\" success");
@@ -188,7 +188,7 @@ sub sync{
 
     if (!copy($currdb, $newdb))
     {
-        error(__PACKAGE__, "Failed to synchronie db with $targetnode for $vmid");
+        error(__PACKAGE__, "Failed to synchronize db with $targetnode for $vmid");
         die;
     }
 }

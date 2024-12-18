@@ -25,10 +25,9 @@ install: $(PKGSOURCES) install_hookscript
 	$(MAKE) -C PVE install
 	install -m 0755 ic $(DESTDIR)$(SBINDIR)
 
-.PHONY: test
-test:
-	PVE_GENERATING_DOCS=1 perl -I. ./ic verifyapi
-	# $(MAKE) -C test
+.PHONY:
+test-%:
+	$(MAKE) -C tests $*
 
 .PHONY: check-pve-version
 check-pve-version:

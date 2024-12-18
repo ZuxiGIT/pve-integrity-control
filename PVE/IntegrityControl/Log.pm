@@ -14,9 +14,7 @@ error
 
 Log::Log4perl->init_and_watch("/var/log/pve-integrity-control/log.conf", 60);
 
-my $LOGFILE_LIMIT = 1024 * 1024 * 1024; # 1 Gb
-
-my $rotator;
+our $LOGFILE_LIMIT = 1024 * 1024 * 1024; # 1 Gb
 
 sub __get_logfile_path {
     return Log::Log4perl::appenders()->{'LogFile'}->filename();
@@ -42,28 +40,38 @@ sub __possibly_rotate {
     }
 }
 
+sub __verify {
+    my $comp = shift;
+
+    die "It is not a PVE::IntegrityControl component: '$comp'\n" if not $comp =~ m|^PVE::IntegrityControl|;
+}
+
 sub info {
     my ($comp, $what) = @_;
-    __possibly_rotate();
+    __verify($comp);
     get_logger($comp)->info($what);
+    __possibly_rotate();
 }
 
 sub debug {
     my ($comp, $what) = @_;
-    __possibly_rotate();
+    __verify($comp);
     get_logger($comp)->debug($what);
+    __possibly_rotate();
 }
 
 sub warn {
     my ($comp, $what) = @_;
-    __possibly_rotate();
+    __verify($comp);
     get_logger($comp)->warn($what);
+    __possibly_rotate();
 }
 
 sub error {
     my ($comp, $what) = @_;
-    __possibly_rotate();
+    __verify($comp);
     get_logger($comp)->error($what);
+    __possibly_rotate();
 }
 
 1;

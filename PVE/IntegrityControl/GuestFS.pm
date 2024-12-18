@@ -44,7 +44,7 @@ sub __get_vm_disks {
         next if !defined($drive);
         next if PVE::QemuServer::Drive::drive_is_cdrom($drive);
         my $volid = $drive->{file};
-        my $format = $drive->{format};
+        my $format = $drive->{format} || 'raw';
         next if !$volid;
         my $diskpath = PVE::Storage::path($storage_conf, $volid);
         $res{$bootdisk}->{file} = $diskpath;
@@ -64,22 +64,29 @@ sub mount_vm_disks {
     foreach my $disk (keys %$disks) {
         debug(__PACKAGE__, "\"mount_vm_disks\" adding drive $disks->{$disk}->{file}");
         $guestfs_handle->add_drive($disks->{$disk}->{file}, readonly => 1, format => $disks->{$disk}->{format});
+        debug(__PACKAGE__, "\"mount_vm_disks\" added drive $disks->{$disk}->{file}");
     }
+    debug(__PACKAGE__, "\"mount_vm_disks\" launching guestfs...");
     $guestfs_handle->launch();
-    debug(__PACKAGE__, "\"mount_vm_disks\" launched guestfs handler");
+    debug(__PACKAGE__, "\"mount_vm_disks\" launched guestfs");
 
+
+    debug(__PACKAGE__, "\"mount_vm_disks\" inspecting os...");
     my @roots = $guestfs_handle->inspect_os();
     if (@roots == 0) {
         error(__PACKAGE__, "\"mount_vm_disks\" inspect_vm: no operating systems found in \"" . join(", ", keys %$disks) . "\"\n");
         die "Faied to mount vm disks\n";
     }
 
+    debug(__PACKAGE__, "\"mount_vm_disks\" got roots:\n" . np(@roots));
+
     # Mount up the disks
     foreach my $root (sort @roots) {
         # Sort keys by length, shortest first, so that we end up
         # mounting the filesystems in the correct order.
-        debug(__PACKAGE__, "\"mount_vm_disks\" inspecting for mountpoints $root");
+        debug(__PACKAGE__, "\"mount_vm_disks\" inspecting for mountpoints $root...");
         my %mps = $guestfs_handle->inspect_get_mountpoints($root);
+        debug(__PACKAGE__, "\"mount_vm_disks\" got mountpoints\n" . np(%mps));
         my @mps = sort { length $a <=> length $b } (keys %mps);
         for my $mp (@mps) {
             debug(__PACKAGE__, "\"mount_vm_disks\" mounting mountable $mps{$mp} to mountpoint $mp");
@@ -115,6 +122,24 @@ sub read_file {
     my $file_content = $guestfs_handle->read_file($path);
 
     return $file_content;
+}
+
+##########################################################
+#           subs for test and bench
+##########################################################
+sub __test_read_file {
+    my ($path) = @_;
+    return $guestfs_handle->read_file($path);;
+}
+
+sub __test_drop_caches {
+    return $guestfs_handle->drop_caches(3);
+}
+
+sub __test_stat_file {
+    my $file = shift;
+
+    return $guestfs_handle->statns($file);
 }
 
 1;
