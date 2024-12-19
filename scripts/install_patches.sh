@@ -29,7 +29,8 @@ patch_component () {
 
     pushd "$COMP" || exit 1
 
-    mk-build-deps --install >& /dev/null
+    # apt tool may ask for confirmation
+    mk-build-deps --install
     if [ -d 'src' ]; then
         pushd src || exit 1
         make install
