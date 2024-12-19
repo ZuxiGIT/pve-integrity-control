@@ -74,6 +74,32 @@ sub __get_config_file_content {
     return $raw;
 }
 
+sub __check_grubx_file {
+    my $expected = shift;
+
+    debug(__PACKAGE__, "\"__check_grubx_file\" was called with expected:$expected\n");
+
+    my $hash = __get_hash(__get_grubx_file_content());
+
+    if ($expected ne $hash) {
+        debug(__PACKAGE__, "\"__check_grubx_file\" hash mismatch for 'grubx64.efi' file: expected $expected, got $hash");
+        die "ERROR: hash mismatch for 'grubx64.efi' file\n";
+    }
+}
+
+sub __get_grubx_file_content {
+
+    debug(__PACKAGE__, "\"__get_grubx_file_content\"");
+
+    my @files = PVE::IntegrityControl::GuestFS::find("/boot/efi");
+    for my $file (@files) {
+        next if not $file =~ m|grubx64.efi$|;
+        return PVE::IntegrityControl::GuestFS::read("/boot/efi/$file");
+    }
+
+    die "Failed to find 'grubx64.efi' file\n";
+}
+
 sub __check_input {
     my $vmid = shift;
 
@@ -96,34 +122,34 @@ sub check {
         die $@;
     }
 
+    my $mounted = 0;
+    my $mount = sub {
+        PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
+        $mounted = 1;
+    };
 
     foreach my $entry (sort keys %db) {
         if ($entry eq 'config') {
             __check_config_file($vmid, $db{config});
         } elsif ($entry eq 'bios') {
-            error(__PACKAGE__, "\"check\":" . __LINE__ . " not implemented");
-            die;
+            &$mount() if not $mounted;
+            __check_grubx_file($db{bios});
         } elsif ($entry eq 'files') {
-
-            PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
-
             foreach my $partition (keys %{$db{$entry}}) {
                 foreach my $path (keys %{$db{$entry}{$partition}}) {
-                    my $raw = PVE::IntegrityControl::GuestFS::read_file("$partition:$path");
+                    &$mount() if not $mounted;
+                    my $raw = PVE::IntegrityControl::GuestFS::read2("$partition:$path");
                     my $hash = __get_hash($raw);
                     if ($db{$entry}{$partition}{$path} ne $hash) {
                         debug(__PACKAGE__, "\"check\" hash mismatch for $partition:$path: expected $db{$entry}{$partition}{$path}, got $hash");
                         die "ERROR: hash mismatch for $partition:$path\n";
                     }
-                    debug(__PACKAGE__, "\"check\" hash match, hash:$hash");
                 }
             }
-
-            PVE::IntegrityControl::GuestFS::umount_vm_disks();
-
-            last;
         }
     }
+
+    PVE::IntegrityControl::GuestFS::umount_vm_disks() if $mounted;
 
     info(__PACKAGE__, "\"check\" passed successfully");
 
@@ -141,32 +167,34 @@ sub fill_db {
 
     my $db = PVE::IntegrityControl::DB::load($vmid);
 
+    my $mounted = 0;
+    my $mount = sub {
+        PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
+        $mounted = 1;
+    };
+
     foreach my $entry (keys %$db) {
         if ($entry eq 'config') {
             next if $db->{config} ne 'UNDEFINED';
             $db->{config} = __get_hash(__get_config_file_content($vmid));
-            next;
         } elsif ($entry eq 'bios') {
-            error(__PACKAGE__, "\"fill_db\":" . __LINE__ . " not implemented");
-            die;
+            next if $db->{bios} ne 'UNDEFINED';
+            &$mount() if not $mounted;
+            $db->{bios} = __get_hash(__get_grubx_file_content());
         } elsif ($entry eq 'files') {
-
-            PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
-
             foreach my $partition (keys %{$db->{$entry}}) {
                 foreach my $path (keys %{$db->{$entry}->{$partition}}) {
                     next if $db->{$entry}->{$partition}->{$path} ne 'UNDEFINED';
+                    &$mount() if not $mounted;
                     $db->{$entry}->{$partition}->{$path} =
-                        __get_hash(PVE::IntegrityControl::GuestFS::read_file("$partition:$path"));
+                        __get_hash(PVE::IntegrityControl::GuestFS::read2("$partition:$path"));
                 }
             }
-
-            PVE::IntegrityControl::GuestFS::umount_vm_disks();
-
         }
     }
 
     PVE::IntegrityControl::DB::write($vmid, $db);
+    PVE::IntegrityControl::GuestFS::umount_vm_disks() if $mounted;
 }
 
 1;

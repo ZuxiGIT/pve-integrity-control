@@ -15,7 +15,7 @@ sub generate_text {
     my $text = Text::Lorem->new();
     my $words;
     while (bytes::length($words) < $size) {
-        $words .= $text->words(5);
+        $words .= $text->words(100);
     }
 
     return $words;
@@ -37,12 +37,14 @@ sub generate_files {
 
     for my $type (sort keys %mountpoints) {
         my $basedir = $mountpoints{$type};
-        PVE::IntegrityControl::GuestFS::__test_write_file("$basedir/$filename", $type . "\n" . $content);
+        PVE::IntegrityControl::GuestFS::write("$basedir/$filename", $type . "\n" . $content);
+        print "--> wrote file $basedir/$filename\n";
     }
 }
 
-
-my $text = generate_text 1024 * 1024; # 1 Mb
-generate_files "foo", $text;
+my $text_size = 1024 * 1024; # 1 Mb
+my $text = generate_text $text_size;
+print "--> generated ~ $text_size bytes of text\n";
+generate_files "testfile", $text;
 
 PVE::IntegrityControl::GuestFS::umount_vm_disks();

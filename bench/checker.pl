@@ -34,7 +34,7 @@ select()->autoflush();
 my $res;
 PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 PVE::IntegrityControl::Checker::__init_openssl_gost_engine();
-my %file_stat = PVE::IntegrityControl::GuestFS::__test_stat_file($file);
+my %file_stat = PVE::IntegrityControl::GuestFS::stat_file($file);
 my $file_size = sprintf("%.3f", $file_stat{st_size} / 1024 / 1024);
 print "file size: $file_size Mb\n";
 
@@ -44,20 +44,20 @@ my $start = Time::HiRes::time();
 
 print "reading file without dropping cache after reading: ";
 $res = timeit($iters, sub {
-        PVE::IntegrityControl::GuestFS::__test_read_file($file);
+        PVE::IntegrityControl::GuestFS::read($file);
 });
 print "ellapsed time ", $res->real, "sec\n";
 my $r_wo_d = $res->real;
 
 print "reading file with dropping cache after reading: ";
 $res = timeit($iters, sub {
-        PVE::IntegrityControl::GuestFS::__test_read_file($file);
-        PVE::IntegrityControl::GuestFS::__test_drop_caches(1);
+        PVE::IntegrityControl::GuestFS::read($file);
+        PVE::IntegrityControl::GuestFS::drop_caches(1);
 });
 print "ellapsed time ", $res->real, "sec\n";
 my $r_w_d = $res->real;
 
-my $file_content = PVE::IntegrityControl::GuestFS::__test_read_file($file);
+my $file_content = PVE::IntegrityControl::GuestFS::read($file);
 print "calculating file hash: ";
 $res = timeit($iters, sub { PVE::IntegrityControl::Checker::__get_hash($file_content);});
 print "ellapsed time ", $res->real, "sec\n";

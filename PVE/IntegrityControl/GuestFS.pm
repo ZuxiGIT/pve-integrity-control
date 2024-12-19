@@ -113,44 +113,46 @@ sub umount_vm_disks {
     $guestfs_handle->shutdown();
 }
 
-sub read_file {
+sub read {
+    my ($path) = @_;
+    return $guestfs_handle->read_file($path);;
+}
+
+sub read2 {
     my ($file_path) = @_;
 
-    debug(__PACKAGE__, "\"read_file\" was called with params file_path:$file_path");
+    debug(__PACKAGE__, "\"read2\" was called with params file_path:$file_path");
 
     my ($disk, $path) = split(':', $file_path);
 
     my @roots = $guestfs_handle->inspect_get_roots();
     if (!grep { $_ eq $disk } @roots) {
-        debug(__PACKAGE__, "\"read_file\" available disks:\n" . np(@roots));
-        error(__PACKAGE__, "\"read_file\" unknown VM disk $disk");
+        debug(__PACKAGE__, "\"read2\" available disks:\n" . np(@roots));
+        error(__PACKAGE__, "\"read2\" unknown VM disk $disk");
         die "Failed to get file hash\n";
     }
 
-    my $file_content = $guestfs_handle->read_file($path);
-
-    return $file_content;
+    return $guestfs_handle->read_file($path);
 }
 
-##########################################################
-#           subs for test and bench
-##########################################################
-sub __test_read_file {
-    my ($path) = @_;
-    return $guestfs_handle->read_file($path);;
+sub drop_caches {
+    my $level = shift;
+    return $guestfs_handle->drop_caches($level);
 }
 
-sub __test_drop_caches {
-    return $guestfs_handle->drop_caches(3);
+sub stat {
+    my $path = shift;
+
+    return $guestfs_handle->statns($path);
 }
 
-sub __test_stat_file {
-    my $file = shift;
+sub find {
+    my $dir = shift;
 
-    return $guestfs_handle->statns($file);
+    return $guestfs_handle->find($dir);
 }
 
-sub __test_write_file {
+sub write {
     my $file = shift;
     my $content = shift;
 

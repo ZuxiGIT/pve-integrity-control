@@ -180,10 +180,12 @@ __PACKAGE__->register_method ({
         my $vmid = extract_param($param, 'vmid');
         my $files = extract_param($param, 'files');
         my $config = extract_param($param, 'config');
+        my $bios = extract_param($param, 'bios');
 
         debug(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid");
         debug(__PACKAGE__, "\"set-objects\" files: $files") if $files;
         debug(__PACKAGE__, "\"set-objects\" config: $config") if $config;
+        debug(__PACKAGE__, "\"set-objects\" bios $bios") if $bios;
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;
@@ -199,13 +201,13 @@ __PACKAGE__->register_method ({
             }
         }
 
-        __set_ic_objects($vmid, \%ic_files_hash, $config);
+        __set_ic_objects($vmid, \%ic_files_hash, $config, $bios);
         return;
     }
 });
 
 sub __set_ic_objects {
-    my ($vmid, $ic_files, $config) = @_;
+    my ($vmid, $ic_files, $config, $bios) = @_;
 
     debug(__PACKAGE__, "\"__set_ic_obects\" was called");
 
@@ -222,6 +224,11 @@ sub __set_ic_objects {
     if ($config) {
         die "ERROR: Integrity control object redefinition [config]\n" if exists $db->{config};
         $db->{config} = 'UNDEFINED';
+    }
+
+    if ($bios) {
+        die "ERROR: Integrity control object redefinition [bios]\n" if exists $db->{bios};
+        $db->{bios} = 'UNDEFINED';
     }
 
     PVE::IntegrityControl::DB::write($vmid, $db);

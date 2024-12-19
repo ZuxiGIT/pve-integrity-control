@@ -92,7 +92,6 @@ sub __write_ic_filedb {
         if ($entry eq 'config') {
             $raw .= "config $db->{config}\n";
         } elsif ($entry eq 'bios' ) {
-            # currently is not implemented
             $raw .= "bios $db->{bios}\n";
         } elsif ($entry eq 'files') {
             $raw .= "files\n";
