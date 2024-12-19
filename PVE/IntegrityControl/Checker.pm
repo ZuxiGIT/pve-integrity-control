@@ -94,6 +94,7 @@ sub __get_grubx_file_content {
     my @files = PVE::IntegrityControl::GuestFS::find("/boot/efi");
     for my $file (@files) {
         next if not $file =~ m|grubx64.efi$|;
+        debug(__PACKAGE__, "\"__get_grubx_file_content\" found 'grubx64.efi' file");
         return PVE::IntegrityControl::GuestFS::read("/boot/efi/$file");
     }
 

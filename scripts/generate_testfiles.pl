@@ -26,7 +26,7 @@ sub generate_files {
     my $content = shift;
 
     my %mountpoints = (
-        ext4 => "/home/",
+        ext4 => "/home",
         ext3 => "/mnt/ext3",
         ext2 => "/mnt/ext2",
         fat32 => "/mnt/fat32",

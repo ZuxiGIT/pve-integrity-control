@@ -49,7 +49,6 @@ __PACKAGE__->register_method ({
     parameters => {
         additionalProperties => 0,
         properties => {
-            node => get_standard_option('pve-node'),
             vmid => get_standard_option('pve-vmid', { completion => \&PVE::QemuServer::complete_vmid }),
             target => get_standard_option('pve-node', {
                 description => "Target node.",
@@ -65,7 +64,7 @@ __PACKAGE__->register_method ({
 
         my $vmid = extract_param($param, 'vmid');
         my $target = extract_param($param, 'target');
-        my $localnode = extract_param($param, 'node');
+        my $localnode = PVE::INotify::nodename();
 
         raise_param_exc({ target => "target is local node."}) if $target eq $localnode;
 

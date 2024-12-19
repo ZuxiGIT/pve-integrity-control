@@ -40,12 +40,12 @@ if ($phase eq 'pre-start') {
         debug("PVE::IntegrityControl::Hookscript", "vm was started during migration process, check is delayed to 'pre-start' phase during VM resuming process");
         exit(0);
     }
+    my $time = Time::HiRes::time();
     eval {
-        my $time = Time::HiRes::time();
         PVE::IntegrityControl::Checker::check($vmid);
-        my $total = Time::HiRes::time() - $time;
-        info("PVE::IntegrityControl::Hookscript", "total: $total sec");
     };
+    my $total = Time::HiRes::time() - $time;
+    info("PVE::IntegrityControl::Hookscript", "total: $total sec");
     if ($@) {
         debug("PVE::IntegrityControl::Hookscript", "error: $@");
         error("PVE::IntegrityControl::Hookscript", "vm start is not permitted");
