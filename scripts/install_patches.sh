@@ -18,6 +18,9 @@ if ! type mk-build-deps >& /dev/null; then
     apt install -y devscripts
 fi
 
+echo "deb http://download.proxmox.com/debian bookworm pvetest" > /etc/apt/sources.list.d/pve-development.list
+apt update
+
 pushd "$TMP_DIR" || exit 1
 
 patch_component () {
