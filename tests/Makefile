@@ -5,3 +5,7 @@ logger:
 .PHONY:
 inputs-%:
 	$(MAKE) -C inputs $*
+
+.PHONY:
+outputs-%:
+	$(MAKE) -C outputs $*

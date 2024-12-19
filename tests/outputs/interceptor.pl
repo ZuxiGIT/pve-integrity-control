@@ -9,6 +9,7 @@ use IPC::System::Simple qw(run EXIT_ANY);
 
 use PVE::Storage;
 use PVE::Tools;
+use PVE::IntegrityControl::DB;
 
 my $vmid = shift;
 die "--> vmid is not set\n" if not $vmid;
@@ -45,22 +46,43 @@ sub run_hookscript {
         print "--> Got exception error: $err";
     } elsif ($exit == 1) {
         # script returned error
+        print "--> Got result: exit code $exit\n";
         print "--> Got script error: check journal\n";
     } else {
+        print "--> Got result: exit code $exit\n";
         print "--> Got result: check journal\n";
     }
 }
 
-# 1 parameter not a number
-run_hookscript "test", "test";
-# 2 number is not valid phase name
-run_hookscript "111", "somestring";
-# number of params is not 2
-run_hookscript "111", "pre-stop", "test";
+sub corrupt_db {
+    my $vmid = shift;
 
-# valid test cases
-run_hookscript $vmid, "pre-stop";
-run_hookscript $vmid, "post-stop";
-run_hookscript $vmid, "post-start";
+    my $hash = "1111111";
+    print "--> Corrupting database record 'config' with hash '$hash' value\n";
+    my $db = PVE::IntegrityControl::DB::load($vmid);
+
+    my $old_hash = $db->{config};
+    $db->{config} = "111111111";
+
+    PVE::IntegrityControl::DB::write($vmid, $db);
+
+    return $old_hash;
+}
+
+
+sub restore_db {
+    my $vmid = shift;
+    my $hash = shift;
+
+    print "--> Restoring database record 'config' with hash '$hash' value\n";
+    my $db = PVE::IntegrityControl::DB::load($vmid);
+
+    $db->{config} = $hash;
+
+    PVE::IntegrityControl::DB::write($vmid, $db);
+}
+
 run_hookscript $vmid, "pre-start";
-
+my $old_hash = corrupt_db $vmid;
+run_hookscript $vmid, "pre-start";
+restore_db $vmid, $old_hash;

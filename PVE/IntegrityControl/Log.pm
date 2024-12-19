@@ -43,7 +43,8 @@ sub __possibly_rotate {
 sub __verify {
     my $comp = shift;
 
-    die "It is not a PVE::IntegrityControl component: '$comp'\n" if not $comp =~ m|^PVE::IntegrityControl|;
+    die "It is not a PVE::IntegrityControl component: '$comp'\n"
+    if not $comp =~ m|^PVE::IntegrityControl| and not $comp =~ m|^PVE::API2::IntegrityControl|;
 }
 
 sub info {

@@ -1,17 +1,19 @@
 use PVE::IntegrityControl::Log qw(info warn debug error);
 
-print "--> test info:\n";
+print "--> test logger message is meaningless, so let's test component name\n";
+
+print "--> component name: test info\n";
 eval { info ("test info", "test"); };
 print $@;
 
-print "--> test warn:\n";
+print "--> component name: test warn\n";
 eval { warn ("test warn", "test"); };
 print $@;
 
-print "--> test error:\n";
+print "--> component name: test error\n";
 eval { error ("test error", "test"); };
 print $@;
 
-print "--> test debug:\n";
+print "--> component name: test debug\n";
 eval { debug ("test debug", "test"); };
 print $@;

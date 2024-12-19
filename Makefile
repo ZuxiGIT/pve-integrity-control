@@ -29,6 +29,10 @@ install: $(PKGSOURCES) install_hookscript
 test-%:
 	$(MAKE) -C tests $*
 
+.PHONY:
+bench-%:
+	$(MAKE) -C bench $*
+
 .PHONY: check-pve-version
 check-pve-version:
 	pveversion | awk -F '/' '{print $$2}'

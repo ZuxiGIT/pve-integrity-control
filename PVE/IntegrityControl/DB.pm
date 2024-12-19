@@ -102,10 +102,9 @@ sub __write_ic_filedb {
                     $raw .= "\t$partition:$path $hash\n";
                 }
             }
-            last;
         } else {
-            error(__PACKAGE__, "\"__write_ic_filedb\" unreachable");
-            die __PACKAGE__ . " unreachable";
+            debug(__PACKAGE__, "\"__write_ic_filedb\" Wrong db format, unexpected entry '$entry'");
+            die "Wrong db format, unexpected entry '$entry'\n";
         }
     }
 
@@ -133,8 +132,16 @@ sub load_or_create {
     return $db;
 }
 
+sub __verify {
+    my $vmid = shift;
+
+    die "Bad argument for vmid, expected number, but got [$vmid]\n" if not $vmid =~ m|^\d+$|;
+}
+
 sub load {
     my ($vmid, $node) = @_;
+
+    __verify($vmid);
 
     debug(__PACKAGE__, "\"load\" was called with params vmid:$vmid");
 
@@ -145,7 +152,7 @@ sub load {
 
 	if (!defined $db) {
         debug(__PACKAGE__, "Integrity control database file \"$dbpath\" does not exist");
-        die "Failed to load Integrity control database file for VM $vmid\n";
+        die "Failed to load Integrity control database file for VM $vmid: does not exist\n";
     }
 
     debug(__PACKAGE__, "\"load\" success");
@@ -156,6 +163,8 @@ sub load {
 
 sub write {
     my ($vmid, $db) = @_;
+
+    __verify($vmid);
 
     debug(__PACKAGE__, "\"write\" was called with params vmid:$vmid");
     debug(__PACKAGE__, "\"write\" IntegirtyControl db\n" . np($db));

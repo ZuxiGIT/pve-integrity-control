@@ -55,7 +55,9 @@ sub __get_vm_disks {
 }
 
 sub mount_vm_disks {
-    my ($vmid) = @_;
+    my ($vmid, $ro) = @_;
+
+    $ro = 1 if not defined $ro;
 
     debug(__PACKAGE__, "\"mount_vm_disks\" was called with params vmid:$vmid");
 
@@ -63,7 +65,7 @@ sub mount_vm_disks {
 
     foreach my $disk (keys %$disks) {
         debug(__PACKAGE__, "\"mount_vm_disks\" adding drive $disks->{$disk}->{file}");
-        $guestfs_handle->add_drive($disks->{$disk}->{file}, readonly => 1, format => $disks->{$disk}->{format});
+        $guestfs_handle->add_drive($disks->{$disk}->{file}, readonly => $ro, format => $disks->{$disk}->{format});
         debug(__PACKAGE__, "\"mount_vm_disks\" added drive $disks->{$disk}->{file}");
     }
     debug(__PACKAGE__, "\"mount_vm_disks\" launching guestfs...");
@@ -90,7 +92,13 @@ sub mount_vm_disks {
         my @mps = sort { length $a <=> length $b } (keys %mps);
         for my $mp (@mps) {
             debug(__PACKAGE__, "\"mount_vm_disks\" mounting mountable $mps{$mp} to mountpoint $mp");
-            eval { $guestfs_handle->mount_ro($mps{$mp}, $mp) };
+            eval {
+                if ($ro) {
+                    $guestfs_handle->mount_ro($mps{$mp}, $mp);
+                } else {
+                    $guestfs_handle->mount($mps{$mp}, $mp);
+                }
+            };
             if ($@) {
                 warn(__PACKAGE__, "\"mount_vm_disks\" error occured: $@ (ignored)");
             }
@@ -140,6 +148,13 @@ sub __test_stat_file {
     my $file = shift;
 
     return $guestfs_handle->statns($file);
+}
+
+sub __test_write_file {
+    my $file = shift;
+    my $content = shift;
+
+    return $guestfs_handle->write($file, $content);
 }
 
 1;

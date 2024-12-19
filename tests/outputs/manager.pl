@@ -17,26 +17,25 @@ sub call_manager {
 
     if ($exit == 255) {
         # script died
+        print "--> exit code: $exit\n";
         print "--> Got exception error:\n$err";
     } elsif ($exit != 0) {
         # script returned error
-        print "--> Got script error: $err\n";
+        print "--> exit code: $exit\n";
+        print "--> Got script error:\n$err" if $err;
     } else {
-        print "--> Got result: $out\n";
+        print "--> exit code: $exit\n";
+        print "--> Got result:\n$out" if $out;
     }
+
+    print "--> check journal\n\n";
 }
 
-call_manager ;
-call_manager "status", "zzz";
-call_manager "status", $vmid;
+call_manager "disable", $vmid;
+call_manager "enable", $vmid;
 
-call_manager "unset-object", $vmid, "--fff";
-call_manager "unset-object", $vmid, "--files", "zzzzzzzz";
 call_manager "unset-object", $vmid, "--files", "/dev/sda9:/home/testfile";
 call_manager "unset-object", $vmid, "--config";
 call_manager "unset-object", $vmid, "--bios";
 
-call_manager "set-object", $vmid, "--fff";
-call_manager "set-object", $vmid, "--files", "zzzzzzzz";
 call_manager "set-object", $vmid, "--files", "/dev/sda9:/home/testfile", "--config", "--bios";
-

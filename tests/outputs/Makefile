@@ -4,16 +4,12 @@ interceptor:
 
 .PHONY:
 checker:
-	perl $@.pl
+	perl $@.pl $(vmid)
 
 .PHONY:
 manager:
 	perl $@.pl $(vmid)
 
 .PHONY:
-logger:
-	perl $@.pl
-
-.PHONY:
-bd:
+db:
 	perl $@.pl $(vmid)

@@ -13,12 +13,15 @@ use PVE::IntegrityControl::GuestFS;
 
 # First argument is the vmid
 my $vmid = shift;
+die "--> vmid is not set\n" if not $vmid;
 
 # Second argument is the testfile
-my $file = shift;
+my $file = "/home/testfile";
+die "--> file is not set\n" if not $file;
 
 # Third argument is the number of iterations
-my $iters = shift;
+my $iters = 1000;
+die "--> iters is not set\n" if not $iters;
 
 print "number of iterations: $iters\n";
 print "file to read: $file\n";
