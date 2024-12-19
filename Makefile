@@ -33,6 +33,10 @@ test-%:
 bench-%:
 	$(MAKE) -C bench $*
 
+.PHONY:
+generate-testfiles:
+	perl scripts/generate_testfiles.pl $(vmid)
+
 .PHONY: check-pve-version
 check-pve-version:
 	pveversion | awk -F '/' '{print $$2}'
