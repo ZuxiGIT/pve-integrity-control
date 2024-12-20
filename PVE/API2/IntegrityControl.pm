@@ -269,9 +269,6 @@ __PACKAGE__->register_method ({
         my $config = extract_param($param, 'config');
         my $bios = extract_param($param, 'bios');
 
-        my $check = PVE::QemuServer::check_running($vmid);
-        die "ERROR: Vm $vmid is running\n" if $check;
-
         my %ic_files_hash;
         if ($files) {
             my @ic_files_list = PVE::Tools::split_list($files);

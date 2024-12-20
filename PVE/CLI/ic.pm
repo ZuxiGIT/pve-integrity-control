@@ -11,6 +11,7 @@ use PVE::RPCEnvironment;
 
 use PVE::API2::IntegrityControl;
 use PVE::IntegrityControl::DB;
+use PVE::IntegrityControl::Log;
 
 use PVE::CLIHandler;
 use base qw(PVE::CLIHandler);
@@ -106,6 +107,23 @@ __PACKAGE__->register_method ({
     }
 });
 
+__PACKAGE__->register_method ({
+    name => 'new_journal',
+    path => 'new_journal',
+    method => 'POST',
+    description => 'Archive journal and start new one',
+    protected => 1,
+    proxyto => 'node',
+    parameters => {},
+    returns => {
+        type => 'null'
+    },
+    code => sub {
+        PVE::IntegrityControl::Log::__get_rotator()->rotate();
+        return;
+    }
+});
+
 
 our $cmddef = {
     status => ['PVE::API2::IntegrityControl', 'ic_status', ['vmid'], { }, sub {
@@ -121,6 +139,7 @@ our $cmddef = {
         print "database:\n$res";
     }],
     'open-journal' => [ __PACKAGE__, 'less_log', [], {}],
+    'start-new-journal' => [ __PACKAGE__, 'new_journal', [], {}],
     'sync-db' => [ __PACKAGE__, 'sync_db', [ 'target' ], {}, sub {
         my $status = shift;
         print "status: $status\n";
