@@ -42,6 +42,14 @@ generate-testfiles:
 check-pve-version:
 	pveversion | awk -F '/' '{print $$2}'
 
+.PHONY:
+check-deps-version:
+	scripts/deps_version.sh
+
+.PHONY:
+check-fs:
+	perl scripts/check-fs.pl $(vmid)
+
 .PHONY: deps-install
 deps-install:
 	scripts/install_deps.sh
