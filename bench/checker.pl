@@ -34,7 +34,7 @@ select()->autoflush();
 my $res;
 PVE::IntegrityControl::GuestFS::mount_vm_disks($vmid);
 PVE::IntegrityControl::Checker::__init_openssl_gost_engine();
-my %file_stat = PVE::IntegrityControl::GuestFS::stat_file($file);
+my %file_stat = PVE::IntegrityControl::GuestFS::stat($file);
 my $file_size = sprintf("%.3f", $file_stat{st_size} / 1024 / 1024);
 print "file size: $file_size Mb\n";
 

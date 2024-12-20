@@ -13,7 +13,7 @@ print "--> Start writting to journal 300 bytes of text\n";
 
 my $text = Text::Lorem->new();
 
-my $words;
+my $words .= $text->words(5);
 while (bytes::length($words) < 300) {
     $words .= $text->words(5);
 }
