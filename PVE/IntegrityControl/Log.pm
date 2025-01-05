@@ -16,13 +16,13 @@ Log::Log4perl->init_and_watch("/var/log/pve-integrity-control/log.conf", 60);
 
 our $LOGFILE_LIMIT = 1024 * 1024 * 1024; # 1 Gb
 
-sub __get_logfile_path {
+sub get_logfile_path {
     return Log::Log4perl::appenders()->{'LogFile'}->filename();
 }
 
 sub __get_rotator {
     return new Logfile::Rotate(
-        File => __get_logfile_path(),
+        File => get_logfile_path(),
         Count => 7,
         Gzip => 'lib',
         Post => sub {
@@ -33,7 +33,7 @@ sub __get_rotator {
 }
 
 sub __possibly_rotate {
-    my $size = stat(__get_logfile_path)->size;
+    my $size = stat(get_logfile_path)->size;
 
     if ($size > $LOGFILE_LIMIT) {
         __get_rotator()->rotate();

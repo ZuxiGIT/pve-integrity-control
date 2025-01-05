@@ -21,21 +21,19 @@ sub setup_environment {
 }
 
 __PACKAGE__->register_method ({
-    name => 'less_log',
-    path => 'less_log',
+    name => 'open_journal',
+    path => 'open_journal',
     method => 'GET',
-    description => 'Less journal',
+    description => 'Open journal',
     protected => 1,
     proxyto => 'node',
-    parameters => {
-        additionalProperties => 0,
-        properties => {}
-    },
+    parameters => {},
     returns => {
         type => 'null'
     },
     code => sub {
-        system('less /var/log/pve-integrity-control/log.log');
+        my $journal = PVE::IntegrityControl::Log::get_logfile_path();
+        system("less $journal");
         return
     }
 });
@@ -138,7 +136,7 @@ our $cmddef = {
         my $res = shift;
         print "database:\n$res";
     }],
-    'open-journal' => [ __PACKAGE__, 'less_log', [], {}],
+    'open-journal' => [ __PACKAGE__, 'open_journal', [], {}],
     'start-new-journal' => [ __PACKAGE__, 'new_journal', [], {}],
     'sync-db' => [ __PACKAGE__, 'sync_db', [ 'target' ], {}, sub {
         my $status = shift;
