@@ -10,6 +10,7 @@ info
 debug
 warn
 error
+trace
 );
 
 Log::Log4perl->init_and_watch("/var/log/pve-integrity-control/log.conf", 60);
@@ -44,7 +45,7 @@ sub __verify {
     my $comp = shift;
 
     die "It is not a PVE::IntegrityControl component: '$comp'\n"
-    if not $comp =~ m|^PVE::IntegrityControl| and not $comp =~ m|^PVE::API2::IntegrityControl|;
+    if not $comp =~ m|^PVE::(API2::)?IntegrityControl|;
 }
 
 sub info {
@@ -72,6 +73,13 @@ sub error {
     my ($comp, $what) = @_;
     __verify($comp);
     get_logger($comp)->error($what);
+    __possibly_rotate();
+}
+
+sub trace {
+    my ($comp, $what) = @_;
+    __verify($comp);
+    get_logger($comp)->trace($what);
     __possibly_rotate();
 }
 

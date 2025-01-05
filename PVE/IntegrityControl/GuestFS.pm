@@ -9,32 +9,42 @@ use PVE::QemuServer::Drive;
 use PVE::QemuConfig;
 use Sys::Guestfs;
 
-use PVE::IntegrityControl::Log qw(error info warn debug);
+use PVE::IntegrityControl::Log qw(error info warn debug trace);
+
+my $try = sub {
+    my $sub = shift;
+
+    my $res;
+    eval { $res = &$sub(@_); };
+    if ($@) {
+        error(__PACKAGE__, $@) if $@;
+        die "Internal error occured\n";
+    }
+    return $res;
+};
 
 my $guestfs_handle = Sys::Guestfs->new();
 
 sub __get_vm_disks {
     my ($vmid) = @_;
 
-    debug(__PACKAGE__, "\"__get_vm_disks\" was called with params vmid:$vmid");
-
+    trace(__PACKAGE__, "\"__get_vm_disks\" was called");
+    trace(__PACKAGE__, "vmid:$vmid");
 
     my $storage_conf = undef;
     my $vm_conf = undef;
     my $bootdisks = undef;
 
-    eval {
+    &$try(sub {
+        my $vmid = shift;
         $storage_conf = PVE::Storage::config();
         $vm_conf = PVE::QemuConfig->load_config($vmid);
         $bootdisks = PVE::QemuServer::Drive::get_bootdisks($vm_conf);
-    };
-    if ($@) {
-        error(__PACKAGE__, "\"__get_vm_disks\" error occured: $@\n");
-        die $@;
-    }
-    debug(__PACKAGE__, "\"__get_vm_disks\" storage config for vmid:$vmid\n" . np($storage_conf));
-    debug(__PACKAGE__, "\"__get_vm_disks\" config for vmid:$vmid\n" . np($vm_conf));
-    debug(__PACKAGE__, "\"__get_vm_disks\" bootdisks for vmid:$vmid\n" . np($bootdisks));
+    }, $vmid);
+
+    debug(__PACKAGE__, "storage config for vmid:$vmid\n" . np($storage_conf));
+    debug(__PACKAGE__, "config for vmid:$vmid\n" . np($vm_conf));
+    debug(__PACKAGE__, "bootdisks for vmid:$vmid\n" . np($bootdisks));
 
     my %res;
 
@@ -50,7 +60,7 @@ sub __get_vm_disks {
         $res{$bootdisk}->{file} = $diskpath;
         $res{$bootdisk}->{format} = $format;
     }
-    debug(__PACKAGE__, "\"__get_vm_disks\" res for vmid:$vmid\n" . np(%res));
+    debug(__PACKAGE__, "vm $vmid disks:\n" . np(%res));
     return \%res;
 }
 
@@ -59,39 +69,43 @@ sub mount_vm_disks {
 
     $ro = 1 if not defined $ro;
 
-    debug(__PACKAGE__, "\"mount_vm_disks\" was called with params vmid:$vmid");
+    trace(__PACKAGE__, "\"mount_vm_disks\" was called");
+    trace(__PACKAGE__, "vmid:$vmid");
+    trace(__PACKAGE__, "readonly:$ro");
 
     my $disks = __get_vm_disks($vmid);
 
     foreach my $disk (keys %$disks) {
-        debug(__PACKAGE__, "\"mount_vm_disks\" adding drive $disks->{$disk}->{file}");
-        $guestfs_handle->add_drive($disks->{$disk}->{file}, readonly => $ro, format => $disks->{$disk}->{format});
-        debug(__PACKAGE__, "\"mount_vm_disks\" added drive $disks->{$disk}->{file}");
+        my $disk_path = $disks->{$disk}->{file};
+        my $disk_format = $disks->{$disk}->{format};
+
+        debug(__PACKAGE__, "adding disk $disk_path");
+        $guestfs_handle->add_drive($disk_path, readonly => $ro, format => $disk_format);
+        debug(__PACKAGE__, "added drive $disk_path");
     }
-    debug(__PACKAGE__, "\"mount_vm_disks\" launching guestfs...");
+    debug(__PACKAGE__, "launching guestfs...");
     $guestfs_handle->launch();
-    debug(__PACKAGE__, "\"mount_vm_disks\" launched guestfs");
+    debug(__PACKAGE__, "launched guestfs");
 
-
-    debug(__PACKAGE__, "\"mount_vm_disks\" inspecting os...");
+    debug(__PACKAGE__, "inspecting os...");
     my @roots = $guestfs_handle->inspect_os();
     if (@roots == 0) {
-        error(__PACKAGE__, "\"mount_vm_disks\" inspect_vm: no operating systems found in \"" . join(", ", keys %$disks) . "\"\n");
+        error(__PACKAGE__, "inspect_vm: no operating systems found in \"" . join(", ", keys %$disks) . "\"\n");
         die "Faied to mount vm disks\n";
     }
 
-    debug(__PACKAGE__, "\"mount_vm_disks\" got roots:\n" . np(@roots));
+    debug(__PACKAGE__, "got roots:\n" . np(@roots));
 
     # Mount up the disks
     foreach my $root (sort @roots) {
         # Sort keys by length, shortest first, so that we end up
         # mounting the filesystems in the correct order.
-        debug(__PACKAGE__, "\"mount_vm_disks\" inspecting for mountpoints $root...");
+        debug(__PACKAGE__, "inspecting for mountpoints $root...");
         my %mps = $guestfs_handle->inspect_get_mountpoints($root);
-        debug(__PACKAGE__, "\"mount_vm_disks\" got mountpoints\n" . np(%mps));
+        debug(__PACKAGE__, "got mountpoints\n" . np(%mps));
         my @mps = sort { length $a <=> length $b } (keys %mps);
         for my $mp (@mps) {
-            debug(__PACKAGE__, "\"mount_vm_disks\" mounting mountable $mps{$mp} to mountpoint $mp");
+            debug(__PACKAGE__, "mounting mountable $mps{$mp} to mountpoint $mp");
             eval {
                 if ($ro) {
                     $guestfs_handle->mount_ro($mps{$mp}, $mp);
@@ -100,17 +114,20 @@ sub mount_vm_disks {
                 }
             };
             if ($@) {
-                warn(__PACKAGE__, "\"mount_vm_disks\" error occured: $@ (ignored)");
+                warn(__PACKAGE__, "error occured: $@ (ignored)");
             }
         }
     }
+    info(__PACKAGE__, "Successfully mounted disks for vm $vmid");
 }
 
 sub umount_vm_disks {
-    debug(__PACKAGE__, "\"umount_vm_disks\" was called");
+    trace(__PACKAGE__, "\"umount_vm_disks\" was called");
 
     $guestfs_handle->umount_all();
     $guestfs_handle->shutdown();
+
+    info(__PACKAGE__, "Successfully unmounted all disks");
 }
 
 sub read {
@@ -121,14 +138,11 @@ sub read {
 sub read2 {
     my ($file_path) = @_;
 
-    debug(__PACKAGE__, "\"read2\" was called with params file_path:$file_path");
-
     my ($disk, $path) = split(':', $file_path);
 
     my @roots = $guestfs_handle->inspect_get_roots();
     if (!grep { $_ eq $disk } @roots) {
-        debug(__PACKAGE__, "\"read2\" available disks:\n" . np(@roots));
-        error(__PACKAGE__, "\"read2\" unknown VM disk $disk");
+        error(__PACKAGE__, "unknown vm disk $disk");
         die "Failed to get file hash\n";
     }
 

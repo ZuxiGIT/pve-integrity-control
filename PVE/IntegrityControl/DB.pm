@@ -38,7 +38,7 @@ use warnings;
 use DDP;
 use File::Copy;
 use PVE::Cluster;
-use PVE::IntegrityControl::Log qw(debug error info);
+use PVE::IntegrityControl::Log qw(debug error info trace);
 
 my $nodename = PVE::INotify::nodename();
 
@@ -53,8 +53,9 @@ sub __parse_ic_filedb {
 
     return if !defined($raw);
 
-    debug(__PACKAGE__, "\"__parse_ic_filedb\" filename:$filename");
-    debug(__PACKAGE__, "\"__parse_ic_filedb\" raw:[$raw]");
+    trace(__PACKAGE__, "\"__parse_ic_filedb\" was called");
+    trace(__PACKAGE__, "filename:$filename");
+    trace(__PACKAGE__, "raw:[$raw]");
 
     my $res = {};
 
@@ -62,6 +63,7 @@ sub __parse_ic_filedb {
 	|| die "Got invalid ic db filepath: '$filename'";
 
     my $vmid = $1;
+    debug(__PACKAGE__, "vmid:$vmid");
 
     my @lines = split(/\n/, $raw);
     foreach my $line (@lines) {
@@ -78,14 +80,26 @@ sub __parse_ic_filedb {
             my ($partition, $path, $hash) = ($1, $2, $3);
             $res->{files}->{$partition}->{$path} = $hash;
         } else {
-	        die "vm $vmid - unable to parse ic db: $line\n";
+	        error(__PACKAGE__, "Wrong file format, unable to parse line: '$line'");
+            die "Wrong db file format for vm $vmid\n";
         }
     }
+
     return $res;
 }
 
 sub __write_ic_filedb {
     my ($filename, $db) = @_;
+
+    trace(__PACKAGE__, "\"__write_ic_filedb\" was called");
+    trace(__PACKAGE__, "filename:$filename");
+    trace(__PACKAGE__, "db:\n" . np($db));
+
+    $filename =~ m|/qemu-server/integrity-control/(\d+)\.conf$|
+	|| die "Got invalid ic db filepath: '$filename'";
+
+    my $vmid = $1;
+    debug(__PACKAGE__, "vmid:$vmid");
 
     my $raw = '';
     foreach my $entry (sort keys %$db) {
@@ -94,7 +108,7 @@ sub __write_ic_filedb {
         } elsif ($entry eq 'bios' ) {
             $raw .= "bios $db->{bios}\n";
         } elsif ($entry eq 'files') {
-            $raw .= "files\n";
+            $raw .= "files\n" if keys %{$db->{$entry}};
             foreach my $partition (sort keys %{$db->{$entry}}) {
                 foreach my $path (sort keys %{$db->{$entry}->{$partition}}) {
                     my $hash = $db->{$entry}->{$partition}->{$path};
@@ -102,8 +116,8 @@ sub __write_ic_filedb {
                 }
             }
         } else {
-            debug(__PACKAGE__, "\"__write_ic_filedb\" Wrong db format, unexpected entry '$entry'");
-            die "Wrong db format, unexpected entry '$entry'\n";
+            error(__PACKAGE__, "Wrong db format, unexpected entry '$entry'");
+            die "Wrong db format for vm $vmid\n";
         }
     }
 
@@ -114,17 +128,26 @@ sub __db_path {
     my ($vmid, $node) = @_;
 
     $node = $nodename if !$node;
+
+    trace(__PACKAGE__, "\"__db_path\" was called");
+    trace(__PACKAGE__, "vmid:$vmid");
+    trace(__PACKAGE__, "node:$node");
+
     return "nodes/$node/qemu-server/integrity-control/$vmid.conf";
 }
 
 sub load_or_create {
     my ($vmid, $node) = @_;
 
+    trace(__PACKAGE__, "\"load_or_create\" was called");
+    trace(__PACKAGE__, "vmid:$vmid");
+    trace(__PACKAGE__, "node:$node") if $node;
+
     my $db;
     eval { $db = PVE::IntegrityControl::DB::load($vmid, $node)};
     if ($@) {
-        info(__PACKAGE__, "There is no IntegrityControl DB for $vmid VM");
-        info(__PACKAGE__, "Creating new one for $vmid VM");
+        info(__PACKAGE__, "There is no IntegrityControl DB for vm $vmid");
+        info(__PACKAGE__, "Creating new one for vm $vmid");
         PVE::IntegrityControl::DB::create($vmid);
         $db = {}
     }
@@ -142,20 +165,22 @@ sub load {
 
     __verify($vmid);
 
-    debug(__PACKAGE__, "\"load\" was called with params vmid:$vmid");
+    trace(__PACKAGE__, "\"load\" was called");
+    trace(__PACKAGE__, "vmid:$vmid");
+    trace(__PACKAGE__, "node:$node") if $node;
 
     my $dbpath = __db_path($vmid, $node);
-    debug(__PACKAGE__, "\"load\" db path:$dbpath");
+    debug(__PACKAGE__, "db path for vm $vmid: $dbpath");
 
     my $db = PVE::Cluster::cfs_read_file($dbpath);
 
 	if (!defined $db) {
-        debug(__PACKAGE__, "Integrity control database file \"$dbpath\" does not exist");
-        die "Failed to load Integrity control database file for VM $vmid: does not exist\n";
+        error(__PACKAGE__, "Integrity control database file \"$dbpath\" does not exist");
+        die "Failed to load Integrity control database file for vm $vmid\n";
     }
 
-    debug(__PACKAGE__, "\"load\" success");
-    debug(__PACKAGE__, "\"load\" IntegirtyControl db\n" . np($db));
+    info(__PACKAGE__, "Successfully loaded integrity control database for vm $vmid");
+    debug(__PACKAGE__, "Loaded integirty control db\n" . np($db));
 
     return $db;
 }
@@ -165,25 +190,34 @@ sub write {
 
     __verify($vmid);
 
-    debug(__PACKAGE__, "\"write\" was called with params vmid:$vmid");
-    debug(__PACKAGE__, "\"write\" IntegirtyControl db\n" . np($db));
+    trace(__PACKAGE__, "\"write\" was called");
+    trace(__PACKAGE__, "vmid:$vmid");
+    trace(__PACKAGE__, "db:\n" . np($db));
 
     my $dbpath = __db_path($vmid);
-    debug(__PACKAGE__, "\"write\" db path:$dbpath");
+    debug(__PACKAGE__, "db path for vm $vmid: $dbpath");
 
     PVE::Cluster::cfs_write_file($dbpath, $db);
-    debug(__PACKAGE__, "\"write\" success");
+
+    info(__PACKAGE__, "Successfully wrote integrity control database for vm $vmid");
 }
 
 sub create {
     my ($vmid) = @_;
 
-    debug(__PACKAGE__, "\"create\" was called with params vmid:$vmid");
+    trace(__PACKAGE__, "\"create\" was called");
+    trace(__PACKAGE__, "vmid:$vmid");
+
     PVE::IntegrityControl::DB::write($vmid, {});
+    info(__PACKAGE__, "Successfully created integrity control database for vm $vmid");
 }
 
 sub sync{
     my ($vmid, $targetnode) = @_;
+
+    trace(__PACKAGE__, "\"sync\" was called");
+    trace(__PACKAGE__, "vmid:$vmid");
+    trace(__PACKAGE__, "targetnode:$targetnode");
 
     #test if DB exists
     load($vmid);
@@ -192,13 +226,14 @@ sub sync{
     my $currdb = $basedir .__db_path($vmid);
     my $newdb = $basedir . __db_path($vmid, $targetnode);
 
-    debug(__PACKAGE__, "\"sync\" curr_db:$currdb, new_db:$newdb");
+    debug(__PACKAGE__, "curr_db:$currdb, new_db:$newdb");
 
     if (!copy($currdb, $newdb))
     {
         error(__PACKAGE__, "Failed to synchronize db with $targetnode for $vmid");
-        die;
+        die "Failed to sync\n";
     }
+    info(__PACKAGE__, "Successfully synced integrity control database for vm $vmid with node $targetnode");
 }
 
 1;

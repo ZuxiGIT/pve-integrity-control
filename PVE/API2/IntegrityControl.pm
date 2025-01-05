@@ -13,7 +13,7 @@ use Sys::Guestfs;
 use PVE::IntegrityControl::DB;
 use PVE::IntegrityControl::GuestFS;
 use PVE::IntegrityControl::Checker;
-use PVE::IntegrityControl::Log qw(info debug);
+use PVE::IntegrityControl::Log qw(info debug trace);
 
 use PVE::API2::Qemu;
 
@@ -42,7 +42,7 @@ __PACKAGE__->register_method ({
 
         my $vmid = extract_param($param, 'vmid');
 
-        debug(__PACKAGE__, "\"status\" was called with params vmid:$vmid");
+        trace(__PACKAGE__, "\"status\" was called with params vmid:$vmid");
 
         my $conf = PVE::QemuConfig->load_current_config($vmid);
 
@@ -77,7 +77,7 @@ __PACKAGE__->register_method ({
 
         my $vmid = extract_param($param, 'vmid');
 
-        debug(__PACKAGE__, "\"enable\" was called with params vmid:$vmid");
+        trace(__PACKAGE__, "\"enable\" was called with params vmid:$vmid");
 
         my $vm_cfg = PVE::QemuConfig->load_current_config($vmid, 1);
         die "ERROR: Vm $vmid already has hookscript: $vm_cfg->{hookscript}\n" if $vm_cfg->{hookscript};
@@ -122,7 +122,7 @@ __PACKAGE__->register_method ({
         my ($param) = @_;
         my $vmid = extract_param($param, 'vmid');
 
-        debug(__PACKAGE__, "\"disable\" was called with params vmid:$vmid");
+        trace(__PACKAGE__, "\"disable\" was called with params vmid:$vmid");
 
         return PVE::API2::Qemu->update_vm({( node => $nodename, vmid => $vmid),
             integrity_control => 0,
@@ -182,10 +182,10 @@ __PACKAGE__->register_method ({
         my $config = extract_param($param, 'config');
         my $bios = extract_param($param, 'bios');
 
-        debug(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid");
-        debug(__PACKAGE__, "\"set-objects\" files: $files") if $files;
-        debug(__PACKAGE__, "\"set-objects\" config: $config") if $config;
-        debug(__PACKAGE__, "\"set-objects\" bios $bios") if $bios;
+        trace(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid");
+        trace(__PACKAGE__, "files: $files") if $files;
+        trace(__PACKAGE__, "config: $config") if $config;
+        trace(__PACKAGE__, "bios $bios") if $bios;
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;
@@ -209,7 +209,7 @@ __PACKAGE__->register_method ({
 sub __set_ic_objects {
     my ($vmid, $ic_files, $config, $bios) = @_;
 
-    debug(__PACKAGE__, "\"__set_ic_obects\" was called");
+    trace(__PACKAGE__, "\"__set_ic_obects\" was called");
 
     my $db = PVE::IntegrityControl::DB::load_or_create($vmid);
 
@@ -232,7 +232,12 @@ sub __set_ic_objects {
     }
 
     PVE::IntegrityControl::DB::write($vmid, $db);
-    PVE::IntegrityControl::Checker::fill_db($vmid);
+
+    eval { PVE::IntegrityControl::Checker::fill_db($vmid); };
+    if (my $err = $@) {
+        __unset_ic_objects($vmid, $ic_files, $config, $bios);
+        die $err;
+    }
 }
 
 __PACKAGE__->register_method ({
@@ -269,6 +274,11 @@ __PACKAGE__->register_method ({
         my $config = extract_param($param, 'config');
         my $bios = extract_param($param, 'bios');
 
+        trace(__PACKAGE__, "\"unset-objects\" was called with params vmid:$vmid");
+        trace(__PACKAGE__, "files: $files") if $files;
+        trace(__PACKAGE__, "config: $config") if $config;
+        trace(__PACKAGE__, "bios $bios") if $bios;
+
         my %ic_files_hash;
         if ($files) {
             my @ic_files_list = PVE::Tools::split_list($files);
@@ -287,6 +297,8 @@ __PACKAGE__->register_method ({
 
 sub __unset_ic_objects {
     my ($vmid, $ic_files, $config, $bios) = @_;
+
+    trace(__PACKAGE__, "\"__unset_ic_obects\" was called");
 
     my $db = PVE::IntegrityControl::DB::load($vmid);
 
