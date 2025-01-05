@@ -23,7 +23,7 @@ sub test_wrong_input_format {
     my %db = (
         config => "1234",
         wrongkey => {},
-        bios => "123456",
+        bootloader => "123456",
     );
 
     print "--> Calling DB::write with vmid: 555 and db:\n" . np (%db), "\n";
@@ -34,7 +34,7 @@ sub test_wrong_input_format {
 sub test_wrong_file_format {
     my $bad_db = qq|
 config 1234
-bios 12345
+bootloader 12345
 wrongkey wrongvalue
 |;
 

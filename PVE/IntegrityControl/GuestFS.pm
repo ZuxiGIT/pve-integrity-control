@@ -17,7 +17,7 @@ my $try = sub {
     my $res;
     eval { $res = &$sub(@_); };
     if ($@) {
-        error(__PACKAGE__, $@) if $@;
+        error(__PACKAGE__, $@);
         die "Internal error occured\n";
     }
     return $res;
@@ -61,10 +61,10 @@ sub __get_vm_disks {
         $res{$bootdisk}->{format} = $format;
     }
     debug(__PACKAGE__, "vm $vmid disks:\n" . np(%res));
-    return \%res;
+    return %res;
 }
 
-sub mount_vm_disks {
+sub add_vm_disks {
     my ($vmid, $ro) = @_;
 
     $ro = 1 if not defined $ro;
@@ -73,79 +73,90 @@ sub mount_vm_disks {
     trace(__PACKAGE__, "vmid:$vmid");
     trace(__PACKAGE__, "readonly:$ro");
 
-    my $disks = __get_vm_disks($vmid);
+    my %disks = __get_vm_disks($vmid);
 
-    foreach my $disk (keys %$disks) {
-        my $disk_path = $disks->{$disk}->{file};
-        my $disk_format = $disks->{$disk}->{format};
+    if (keys %disks > 1) {
+        error(__PACKAGE__, "Current implementation supports only one-disked vms");
+        die "Unsupported number of disks\n";
+    }
+
+    foreach my $disk (keys %disks) {
+        my $disk_path = $disks{$disk}{file};
+        my $disk_format = $disks{$disk}{format};
 
         debug(__PACKAGE__, "adding disk $disk_path");
         $guestfs_handle->add_drive($disk_path, readonly => $ro, format => $disk_format);
-        debug(__PACKAGE__, "added drive $disk_path");
+        debug(__PACKAGE__, "added disk $disk_path");
     }
+
     debug(__PACKAGE__, "launching guestfs...");
     $guestfs_handle->launch();
     debug(__PACKAGE__, "launched guestfs");
 
-    debug(__PACKAGE__, "inspecting os...");
-    my @roots = $guestfs_handle->inspect_os();
-    if (@roots == 0) {
-        error(__PACKAGE__, "inspect_vm: no operating systems found in \"" . join(", ", keys %$disks) . "\"\n");
-        die "Faied to mount vm disks\n";
-    }
+    my @devs = list_devices();
 
-    debug(__PACKAGE__, "got roots:\n" . np(@roots));
+    foreach my $dev (@devs) {
+        my $parttype = $guestfs_handle->part_get_parttype($dev);
+        debug(__PACKAGE__, "partition table type for $dev: $parttype");
 
-    # Mount up the disks
-    foreach my $root (sort @roots) {
-        # Sort keys by length, shortest first, so that we end up
-        # mounting the filesystems in the correct order.
-        debug(__PACKAGE__, "inspecting for mountpoints $root...");
-        my %mps = $guestfs_handle->inspect_get_mountpoints($root);
-        debug(__PACKAGE__, "got mountpoints\n" . np(%mps));
-        my @mps = sort { length $a <=> length $b } (keys %mps);
-        for my $mp (@mps) {
-            debug(__PACKAGE__, "mounting mountable $mps{$mp} to mountpoint $mp");
-            eval {
-                if ($ro) {
-                    $guestfs_handle->mount_ro($mps{$mp}, $mp);
-                } else {
-                    $guestfs_handle->mount($mps{$mp}, $mp);
-                }
-            };
-            if ($@) {
-                warn(__PACKAGE__, "error occured: $@ (ignored)");
-            }
+        if ($parttype ne 'gpt') {
+            error(__PACKAGE__, "Current implementation supports only gpt partition tables for vm disk");
+            die "Unsupported partition table type of vm disk\n";
         }
     }
-    info(__PACKAGE__, "Successfully mounted disks for vm $vmid");
+
+    debug(__PACKAGE__, "Successfully added disks for vm $vmid");
 }
 
-sub umount_vm_disks {
-    trace(__PACKAGE__, "\"umount_vm_disks\" was called");
+sub mount_partition {
+    my ($partition, $ro) = @_;
 
-    $guestfs_handle->umount_all();
-    $guestfs_handle->shutdown();
+    $ro = 1 if not defined $ro;
 
-    info(__PACKAGE__, "Successfully unmounted all disks");
+    trace(__PACKAGE__, "\"mount_partition\" was called");
+    trace(__PACKAGE__, "partition:$partition");
+    trace(__PACKAGE__, "readonly:$ro");
+
+    if ($ro) {
+        $guestfs_handle->mount_ro($partition, "/");
+    } else {
+        $guestfs_handle->mount($partition, "/");
+    }
+
+    debug(__PACKAGE__, "Successfully mounted partition $partition [ro? $ro]");
+}
+
+sub umount_partition {
+    trace(__PACKAGE__, "\"umount_partition\" was called");
+
+    my $partition = ($guestfs_handle->mounts())[0];
+
+    $guestfs_handle->umount("/");
+
+    debug(__PACKAGE__, "Successfully unmounted partition $partition");
+}
+
+sub find_bootable_partition {
+    trace(__PACKAGE__, "\"find_bootable_partition\" was called");
+
+    my $dev = (list_devices())[0];
+
+    my @parts = $guestfs_handle->part_list($dev);
+
+    foreach my $part (@parts) {
+        return "$dev$part->{part_num}" if $guestfs_handle->part_get_bootable($dev, $part->{part_num});
+    }
+
+    die "No bootable partition was found\n";
+}
+
+sub list_devices {
+    trace(__PACKAGE__, "\"list_devices\" was called");
+    return $guestfs_handle->list_devices();
 }
 
 sub read {
     my ($path) = @_;
-    return $guestfs_handle->read_file($path);;
-}
-
-sub read2 {
-    my ($file_path) = @_;
-
-    my ($disk, $path) = split(':', $file_path);
-
-    my @roots = $guestfs_handle->inspect_get_roots();
-    if (!grep { $_ eq $disk } @roots) {
-        error(__PACKAGE__, "unknown vm disk $disk");
-        die "Failed to get file hash\n";
-    }
-
     return $guestfs_handle->read_file($path);
 }
 

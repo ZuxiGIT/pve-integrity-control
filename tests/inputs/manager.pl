@@ -34,9 +34,9 @@ call_manager "unset-object", $vmid, "--fff";
 call_manager "unset-object", $vmid, "--files", "zzzzzzzz";
 call_manager "unset-object", $vmid, "--files", "/dev/sda9:/home/testfile";
 call_manager "unset-object", $vmid, "--config";
-call_manager "unset-object", $vmid, "--bios";
+call_manager "unset-object", $vmid, "--bootloader";
 
 call_manager "set-object", $vmid, "--fff";
 call_manager "set-object", $vmid, "--files", "zzzzzzzz";
-call_manager "set-object", $vmid, "--files", "/dev/sda9:/home/testfile", "--config", "--bios";
+call_manager "set-object", $vmid, "--files", "/dev/sda9:/home/testfile", "--config", "--bootloader";
 

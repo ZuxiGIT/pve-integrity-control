@@ -7,7 +7,7 @@ package PVE::IntegrityControl::DB;
 # db file for some <vmid> VM has following structure:
 #
 # config <hash>
-# bios <hash>
+# bootloader <hash>
 # files
 #   <partition>:<path> <hash>
 #       ^         ^     ^
@@ -18,7 +18,7 @@ package PVE::IntegrityControl::DB;
 #
 # after parsing file db hash has following structure:
 # db {
-#   bios => <hash>,
+#   bootloader => <hash>,
 #   config => <hash>,
 #   files => {
 #     <partition#1> => {
@@ -68,9 +68,9 @@ sub __parse_ic_filedb {
     my @lines = split(/\n/, $raw);
     foreach my $line (@lines) {
 	    next if $line =~ m/^\s*$/;
-        if ($line =~ m|^bios (\w+)$|) {
+        if ($line =~ m|^bootloader (\w+)$|) {
             my $hash = $1;
-            $res->{bios} = $hash;
+            $res->{bootloader} = $hash;
         } elsif ($line =~ m|^config (\w+)$|) {
             my $hash = $1;
             $res->{config} = $hash;
@@ -105,8 +105,8 @@ sub __write_ic_filedb {
     foreach my $entry (sort keys %$db) {
         if ($entry eq 'config') {
             $raw .= "config $db->{config}\n";
-        } elsif ($entry eq 'bios' ) {
-            $raw .= "bios $db->{bios}\n";
+        } elsif ($entry eq 'bootloader' ) {
+            $raw .= "bootloader $db->{bootloader}\n";
         } elsif ($entry eq 'files') {
             $raw .= "files\n" if keys %{$db->{$entry}};
             foreach my $partition (sort keys %{$db->{$entry}}) {

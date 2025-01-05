@@ -165,7 +165,7 @@ __PACKAGE__->register_method ({
                 type => 'boolean',
                 optional => 1,
             },
-            bios => {
+            bootloader => {
                 type => 'boolean',
                 optional => 1,
             }
@@ -180,12 +180,12 @@ __PACKAGE__->register_method ({
         my $vmid = extract_param($param, 'vmid');
         my $files = extract_param($param, 'files');
         my $config = extract_param($param, 'config');
-        my $bios = extract_param($param, 'bios');
+        my $bootloader = extract_param($param, 'bootloader');
 
         trace(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid");
         trace(__PACKAGE__, "files: $files") if $files;
         trace(__PACKAGE__, "config: $config") if $config;
-        trace(__PACKAGE__, "bios $bios") if $bios;
+        trace(__PACKAGE__, "bootloader $bootloader") if $bootloader;
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;
@@ -201,13 +201,13 @@ __PACKAGE__->register_method ({
             }
         }
 
-        __set_ic_objects($vmid, \%ic_files_hash, $config, $bios);
+        __set_ic_objects($vmid, \%ic_files_hash, $config, $bootloader);
         return;
     }
 });
 
 sub __set_ic_objects {
-    my ($vmid, $ic_files, $config, $bios) = @_;
+    my ($vmid, $ic_files, $config, $bootloader) = @_;
 
     trace(__PACKAGE__, "\"__set_ic_obects\" was called");
 
@@ -226,16 +226,17 @@ sub __set_ic_objects {
         $db->{config} = 'UNDEFINED';
     }
 
-    if ($bios) {
-        die "ERROR: Integrity control object redefinition [bios]\n" if exists $db->{bios};
-        $db->{bios} = 'UNDEFINED';
+    if ($bootloader) {
+        die "ERROR: Integrity control object redefinition [bootloader]\n" if exists $db->{bootloader};
+        $db->{bootloader} = 'UNDEFINED';
     }
 
     PVE::IntegrityControl::DB::write($vmid, $db);
 
     eval { PVE::IntegrityControl::Checker::fill_db($vmid); };
     if (my $err = $@) {
-        __unset_ic_objects($vmid, $ic_files, $config, $bios);
+        info(__PACKAGE__, "Error occured while adding new objects: $err");
+        __unset_ic_objects($vmid, $ic_files, $config, $bootloader);
         die $err;
     }
 }
@@ -257,7 +258,7 @@ __PACKAGE__->register_method ({
                 type => 'boolean',
                 optional => 1,
             },
-            bios => {
+            bootloader => {
                 type => 'boolean',
                 optional => 1,
             }
@@ -272,12 +273,12 @@ __PACKAGE__->register_method ({
         my $vmid = extract_param($param, 'vmid');
         my $files = extract_param($param, 'files');
         my $config = extract_param($param, 'config');
-        my $bios = extract_param($param, 'bios');
+        my $bootloader = extract_param($param, 'bootloader');
 
         trace(__PACKAGE__, "\"unset-objects\" was called with params vmid:$vmid");
         trace(__PACKAGE__, "files: $files") if $files;
         trace(__PACKAGE__, "config: $config") if $config;
-        trace(__PACKAGE__, "bios $bios") if $bios;
+        trace(__PACKAGE__, "bootloader $bootloader") if $bootloader;
 
         my %ic_files_hash;
         if ($files) {
@@ -290,13 +291,13 @@ __PACKAGE__->register_method ({
             }
         }
 
-        __unset_ic_objects($vmid, \%ic_files_hash, $config, $bios);
+        __unset_ic_objects($vmid, \%ic_files_hash, $config, $bootloader);
         return;
     }
 });
 
 sub __unset_ic_objects {
-    my ($vmid, $ic_files, $config, $bios) = @_;
+    my ($vmid, $ic_files, $config, $bootloader) = @_;
 
     trace(__PACKAGE__, "\"__unset_ic_obects\" was called");
 
@@ -308,10 +309,10 @@ sub __unset_ic_objects {
         delete $db->{config};
     }
 
-    if ($bios) {
-        die "ERROR: Integrity control object was not set earlier: [bios]\n"
-        if !exists $db->{bios};
-        delete $db->{bios};
+    if ($bootloader) {
+        die "ERROR: Integrity control object was not set earlier: [bootloader]\n"
+        if !exists $db->{bootloader};
+        delete $db->{bootloader};
     }
 
     foreach my $partition (sort keys %$ic_files) {
