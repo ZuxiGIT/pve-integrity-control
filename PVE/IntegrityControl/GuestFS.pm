@@ -96,17 +96,10 @@ sub add_vm_disks {
     $guestfs_handle->launch();
     debug(__PACKAGE__, "launched guestfs");
 
-    my @devs = list_devices();
+    my $dev = (list_devices())[0];
 
-    foreach my $dev (@devs) {
-        my $parttype = $guestfs_handle->part_get_parttype($dev);
-        debug(__PACKAGE__, "partition table type for $dev: $parttype");
-
-        if ($parttype ne 'gpt') {
-            error(__PACKAGE__, "Current implementation supports only gpt partition tables for vm disk");
-            die "Unsupported partition table type of vm disk\n";
-        }
-    }
+    my $parttype = $guestfs_handle->part_get_parttype($dev);
+    debug(__PACKAGE__, "partition table type for $dev: $parttype");
 
     debug(__PACKAGE__, "Successfully added disks for vm $vmid");
 

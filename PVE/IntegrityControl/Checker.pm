@@ -98,8 +98,6 @@ sub __get_mbr_vbr_hash {
     trace(__PACKAGE__, "\"__get_mbr_vbr_hash\" was called");
     trace(__PACKAGE__, "mbr_vbr:\n" . np($mbr_vbr));
 
-    my %mbr_vbr = %$mbr_vbr;
-
     my $dev = (PVE::IntegrityControl::GuestFS::list_devices())[0];
 
     if ((my $parttype = PVE::IntegrityControl::GuestFS::part_get_parttype($dev)) ne 'msdos') {
@@ -107,17 +105,17 @@ sub __get_mbr_vbr_hash {
         die "Failed to calculate MBR/VBR hash\n";
     }
 
-    foreach my $entry (%mbr_vbr) {
+    foreach my $entry (keys %{$mbr_vbr}) {
         if ($entry eq 'mbr') {
-            my $mbr_raw = PVE::IntegrtyControl::GuestFS::pread_device($dev, 512, 0);
-            $mbr_vbr{mbr} = __get_hash($mbr_raw);
-            info(__PACKAGE__, "Computed MBR hash: $mbr_vbr{mbr}");
+            my $mbr_raw = PVE::IntegrityControl::GuestFS::pread_device($dev, 512, 0);
+            $mbr_vbr->{mbr} = __get_hash($mbr_raw);
+            info(__PACKAGE__, "Computed MBR hash: $mbr_vbr->{mbr}");
         } elsif ($entry eq 'vbr') {
-            my $part = &$try(\&PVE::IntegrtyControl::GuestFS::find_bootable_partition);
+            my $part = &$try(\&PVE::IntegrityControl::GuestFS::find_bootable_partition);
             debug(__PACKAGE__, "bootable partition info:\n" . np($part));
-            my $vbr_raw = PVE::IntegrtyControl::GuestFS::pread_device($dev, 512, $part->{part_start});
-            $mbr_vbr{vbr} = __get_hash($vbr_raw);
-            info(__PACKAGE__, "Computed VBR hash: $mbr_vbr{vbr}");
+            my $vbr_raw = PVE::IntegrityControl::GuestFS::pread_device($dev, 512, $part->{part_start});
+            $mbr_vbr->{vbr} = __get_hash($vbr_raw);
+            info(__PACKAGE__, "Computed VBR hash: $mbr_vbr->{vbr}");
         }
     }
 }
