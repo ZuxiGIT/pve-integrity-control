@@ -82,7 +82,12 @@ sub __get_config_file_content {
     trace(__PACKAGE__, "vmid:$vmid");
 
     my $conf = PVE::QemuConfig->load_current_config($vmid, 1);
+
+    # for sure
     delete $conf->{lock} if $conf->{lock};
+    delete $conf->{integrity_control} if $conf->{integrity_control};
+    delete $conf->{digest} if $conf->{digest};
+
     debug(__PACKAGE__, "config file content:\n" . np($conf));
 
     my $raw = PVE::QemuServer::write_vm_config(undef, $conf);
@@ -90,6 +95,46 @@ sub __get_config_file_content {
     debug(__PACKAGE__, "config file raw content:\n$raw");
 
     return $raw;
+}
+
+sub __check_mbr_vbr {
+    my $mbr_vbr = shift;
+
+    trace(__PACKAGE__, "\"__check_mbr_vbr\" was called");
+    trace(__PACKAGE__, "mbr_vbr:\n" . np($mbr_vbr));
+
+    my $dev = (PVE::IntegrityControl::GuestFS::list_devices())[0];
+
+    if ((my $parttype = PVE::IntegrityControl::GuestFS::part_get_parttype($dev)) ne 'msdos') {
+        error(__PACKAGE__, "Wrong vm disk partition table type: expected MBR, got '$parttype'");
+        die "Failed to check MBR/VBR hash\n";
+    }
+
+    foreach my $entry (keys %{$mbr_vbr}) {
+        if ($entry eq 'mbr') {
+            my $mbr_raw = PVE::IntegrityControl::GuestFS::pread_device($dev, 512, 0);
+            my $hash = __get_hash($mbr_raw);
+            my $expected = $mbr_vbr->{mbr};
+            if ($expected ne $hash) {
+                error(__PACKAGE__, "Hash mismatch for MBR: expected $expected, got $hash");
+                die "Hash mismatch for MBR\n";
+            }
+            info(__PACKAGE__, "MBR hash matched");
+        } elsif ($entry eq 'vbr') {
+            my $part = &$try(\&PVE::IntegrityControl::GuestFS::find_bootable_partition);
+            debug(__PACKAGE__, "bootable partition info:\n" . np($part));
+            my $vbr_raw = PVE::IntegrityControl::GuestFS::pread_device($dev, 512, $part->{part_start});
+            my $hash = __get_hash($vbr_raw);
+            my $expected = $mbr_vbr->{vbr};
+            if ($expected ne $hash) {
+                error(__PACKAGE__, "Hash mismatch for VBR: expected $expected, got $hash");
+                die "Hash mismatch for VBR\n";
+            }
+            info(__PACKAGE__, "VBR hash matched");
+        }
+    }
+
+    trace(__PACKAGE__, "return from \"__check_mbr_vbr\"");
 }
 
 sub __get_mbr_vbr_hash {
@@ -118,6 +163,8 @@ sub __get_mbr_vbr_hash {
             info(__PACKAGE__, "Computed VBR hash: $mbr_vbr->{vbr}");
         }
     }
+
+    trace(__PACKAGE__, "return from \"__get_mbr_vbr_hash\"");
 }
 
 sub __verify_input {
@@ -155,12 +202,18 @@ sub check {
             __check_config_file($vmid, $db{config});
         } elsif ($entry eq 'bootloader') {
             &$launch_gfs() if not $launched_gfs;
-            __check_grubx_file($db{bootloader});
+            __check_mbr_vbr($db{bootloader});
         } elsif ($entry eq 'files') {
             &$launch_gfs() if keys %{$db{$entry}} and not $launched_gfs;
             foreach my $partition (keys %{$db{$entry}}) {
-                PVE::IntegrityControl::GuestFS::mount_partition($partition);
+                my $mounted = 0;
+                my $mount_partition = sub {
+                    &$launch_gfs() unless $launched_gfs;
+                    PVE::IntegrityControl::GuestFS::mount_partition($partition);
+                    $mounted = 1;
+                };
                 foreach my $path (keys %{$db{$entry}{$partition}}) {
+                    &$mount_partition() unless $mounted;
                     my $expected = $db{$entry}{$partition}{$path};
                     my $raw = PVE::IntegrityControl::GuestFS::read($path);
                     my $hash = __get_hash($raw);
@@ -169,7 +222,7 @@ sub check {
                         die "ERROR: hash mismatch for $partition:$path\n";
                     }
                 }
-                PVE::IntegrityControl::GuestFS::umount_partition();
+                PVE::IntegrityControl::GuestFS::umount_partition() if $mounted;
             }
         }
     }
