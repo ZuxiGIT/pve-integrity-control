@@ -48,6 +48,15 @@ PVE::Cluster::cfs_register_file(
     \&__write_ic_filedb
 );
 
+sub extract {
+    my ($param, $key) = @_;
+
+    my $res = $param->{$key};
+    delete $param->{$key};
+
+    return $res;
+}
+
 sub __parse_ic_filedb {
     my ($filename, $raw, $strict) = @_;
 
@@ -65,24 +74,60 @@ sub __parse_ic_filedb {
     my $vmid = $1;
     debug(__PACKAGE__, "vmid:$vmid");
 
-    my @lines = split(/\n/, $raw);
-    foreach my $line (@lines) {
-	    next if $line =~ m/^\s*$/;
-        if ($line =~ m|^bootloader (\w+)$|) {
-            my $hash = $1;
-            $res->{bootloader} = $hash;
-        } elsif ($line =~ m|^config (\w+)$|) {
-            my $hash = $1;
-            $res->{config} = $hash;
-        } elsif ($line =~ m|^files$|) {
-            next
-        } elsif ($line =~ m|^\s+(/dev/\w+):((?:\/[a-z_\-\s0-9\.]+)+) (\w+)$|) {
-            my ($partition, $path, $hash) = ($1, $2, $3);
-            $res->{files}->{$partition}->{$path} = $hash;
-        } else {
-	        error(__PACKAGE__, "Wrong file format, unable to parse line: '$line'");
+    my $verify_hash_format = sub {
+        my $entry = shift;
+        my $hash = shift;
+        if (ref $hash ne '' or not $hash =~ m|\w+|) {
+            error(__PACKAGE__, "Wrong db file format, unexpected hash value [$hash] for '$entry'");
             die "Wrong db file format for vm $vmid\n";
         }
+    };
+
+    my @lines = split(/\n/, $raw);
+
+    while(@lines) {
+        my $line = shift @lines;
+	    next if $line =~ m/^\s*$/;
+
+        if ($line =~ m|^bootloader$|) {
+            foreach my $br (qw(mbr vbr)) {
+                my $bootloader_line = shift @lines;
+                debug(__PACKAGE__, "bootloader_line [$bootloader_line]");
+                if ($bootloader_line =~ m{^\s+$br (\w+)$}) {
+                    my $hash = $1;
+                    &$verify_hash_format("bootloader::$br", $hash);
+                    $res->{bootloader}->{$br} = $hash;
+                    next;
+                }
+                unshift @lines, $bootloader_line;
+            }
+            next;
+        } elsif ($line =~ m|^config (\w+)$|){
+            my $hash = $1;
+            &$verify_hash_format('config file', $hash);
+            $res->{config} = $hash;
+            next;
+        } elsif ($line =~ m|^files$|) {
+            my $exit = 0;
+            # loop for file array proccessing
+            until ($exit) {
+                my $file_line = shift @lines;
+                last unless $file_line;
+                debug(__PACKAGE__, "file_line: [$file_line]");
+                if ($file_line =~ m|^\s+(/dev/\w+):((?:\/[a-zA-Z_\-\s0-9\.]+)+) (\w+)$|) {
+                    my ($partition, $path, $hash) = ($1, $2, $3);
+                    &$verify_hash_format("$partition:$path", $hash);
+                    $res->{files}->{$partition}->{$path} = $hash;
+                } else {
+                    # failed to parse file with hash, exitiing loop
+                    $exit = 1;
+                }
+            }
+            next;
+        }
+
+        error(__PACKAGE__, "Wrong db file format, failed to parse line: [$line]");
+        die "Wrong db file format for vm $vmid\n";
     }
 
     return $res;
@@ -101,26 +146,55 @@ sub __write_ic_filedb {
     my $vmid = $1;
     debug(__PACKAGE__, "vmid:$vmid");
 
+    my $verify_hash_format = sub {
+        my $entry = shift;
+        my $hash = shift;
+        if (ref $hash ne '' or not $hash =~ m|\w+|) {
+            error(__PACKAGE__, "Wrong db format, unexpected hash value [$hash] for '$entry'");
+            die "Wrong db format for vm $vmid\n";
+        }
+    };
+
     my $raw = '';
     foreach my $entry (sort keys %$db) {
         if ($entry eq 'config') {
-            $raw .= "config $db->{config}\n";
+            my $hash = extract($db, 'config');
+            &$verify_hash_format('config file', $hash);
+            $raw .= "config $hash\n";
         } elsif ($entry eq 'bootloader' ) {
-            $raw .= "bootloader $db->{bootloader}\n";
+            $raw .= "bootloader\n";
+            foreach my $entry (keys %{$db->{bootloader}}) {
+                my $hash = extract($db->{bootloader}, $entry);
+                &$verify_hash_format("bootloader::$entry", $hash);
+                $raw .= "\t$entry $hash\n";
+            }
+            extract($db, 'bootloader');
         } elsif ($entry eq 'files') {
-            $raw .= "files\n" if keys %{$db->{$entry}};
+            $raw .= "files\n";
             foreach my $partition (sort keys %{$db->{$entry}}) {
                 foreach my $path (sort keys %{$db->{$entry}->{$partition}}) {
-                    my $hash = $db->{$entry}->{$partition}->{$path};
+                    my $hash = extract($db->{files}->{$partition}, $path);
+                    &$verify_hash_format("$partition:$path", $hash);
                     $raw .= "\t$partition:$path $hash\n";
                 }
+                extract($db->{files}, $partition);
             }
+            extract($db, 'files');
         } else {
             error(__PACKAGE__, "Wrong db format, unexpected entry '$entry'");
             die "Wrong db format for vm $vmid\n";
         }
     }
 
+    if (%{$db}) {
+        error(__PACKAGE__, "Wrong db format, unexpected entries:\n" . np($db));
+        die "Wrong db format for vm $vmid\n";
+    }
+
+    $raw =~ s/\s+$//;
+    debug(__PACKAGE__, "string to write: [$raw]");
+
+    trace(__PACKAGE__, "return from \"__write_ic_filedb\"");
     return $raw;
 }
 

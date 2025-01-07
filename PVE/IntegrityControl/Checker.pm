@@ -90,48 +90,37 @@ sub __get_config_file_content {
     return $raw;
 }
 
-sub __check_grubx_file {
-    my $expected = shift;
+sub __get_mbr_vbr_hash {
+    my $mbr_vbr = shift;
 
-    trace(__PACKAGE__, "\"__check_grubx_file\" was called");
-    trace(__PACKAGE__, "expected:$expected");
+    trace(__PACKAGE__, "\"__get_mbr_vbr_hash\" was called");
+    trace(__PACKAGE__, "mbr_vbr:\n" . np($mbr_vbr));
 
-    my $hash = __get_grubx_file_hash();
+    my %mbr_vbr = %$mbr_vbr;
 
-    if ($expected ne $hash) {
-        error(__PACKAGE__, "Hash mismatch for 'grubx64.efi' file: expected $expected, got $hash");
-        die "ERROR: hash mismatch for 'grubx64.efi' file\n";
+    my $dev = (PVE::IntegrityControl::GuestFS::list_devices())[0];
+
+    if ((my $parttype = PVE::IntegrityControl::GuestFS::part_get_parttype($dev)) ne 'msdos') {
+        error(__PACKAGE__, "Wrong vm disk partition table type: expected MBR, got '$parttype'");
+        die "Failed to calculate MBR/VBR hash\n";
+    }
+
+    foreach my $entry (%mbr_vbr) {
+        if ($entry eq 'mbr') {
+            my $mbr_raw = PVE::IntegrtyControl::GuestFS::pread_device($dev, 512, 0);
+            $mbr_vbr{mbr} = __get_hash($mbr_raw);
+            info(__PACKAGE__, "Computed MBR hash: $mbr_vbr{mbr}");
+        } elsif ($entry eq 'vbr') {
+            my $part = &$try(\&PVE::IntegrtyControl::GuestFS::find_bootable_partition);
+            debug(__PACKAGE__, "bootable partition info:\n" . np($part));
+            my $vbr_raw = PVE::IntegrtyControl::GuestFS::pread_device($dev, 512, $part->{part_start});
+            $mbr_vbr{vbr} = __get_hash($vbr_raw);
+            info(__PACKAGE__, "Computed VBR hash: $mbr_vbr{vbr}");
+        }
     }
 }
 
-sub __get_grubx_file_hash {
-    trace(__PACKAGE__, "\"__get_grubx_file_hash\" was called");
-
-    my $partition = &$try(\&PVE::IntegrityControl::GuestFS::find_bootable_partition);
-    debug(__PACKAGE__, "bootable partition: $partition");
-
-    PVE::IntegrityControl::GuestFS::mount_partition($partition);
-
-    my $hash;
-
-    my @files = PVE::IntegrityControl::GuestFS::find("/");
-    for my $file (@files) {
-        next if not $file =~ m|grubx64.efi$|;
-        debug(__PACKAGE__, "Found 'grubx64.efi' file: $file");
-        $hash = __get_hash(PVE::IntegrityControl::GuestFS::read("/$file"));
-        debug(__PACKAGE__, "computed bootloader hash: $hash");
-    }
-
-    PVE::IntegrityControl::GuestFS::umount_partition();
-
-    if (not $hash) {
-        die "Failed to find bootloader\n";
-    }
-
-    return $hash;
-}
-
-sub __check_input {
+sub __verify_input {
     my $vmid = shift;
 
     die "Passed vmid [$vmid] is not valid\n" if not $vmid =~ m/^\d+$/;
@@ -140,12 +129,10 @@ sub __check_input {
 sub check {
     my ($vmid) = @_;
 
-    __check_input($vmid);
+    __verify_input($vmid);
 
     trace(__PACKAGE__, "\"check\" was called");
     trace(__PACKAGE__, "vmid:$vmid");
-
-    &$try(\&__init_openssl_gost_engine) if not $digest;
 
     my %db;
     eval {%db = %{PVE::IntegrityControl::DB::load($vmid)}};
@@ -154,6 +141,8 @@ sub check {
         error(__PACKAGE__, "intergrity control objects are not defined");
         die $@;
     }
+
+    &$try(\&__init_openssl_gost_engine) if not $digest;
 
     my $launched_gfs = 0;
     my $launch_gfs = sub {
@@ -212,9 +201,9 @@ sub fill_db {
             next if $db{config} ne 'UNDEFINED';
             $db{config} = __get_hash(&$try(\&__get_config_file_content, $vmid));
         } elsif ($entry eq 'bootloader') {
-            next if $db{bootloader} ne 'UNDEFINED';
+            next if ($db{bootloader}->{mbr} // '') ne 'UNDEFINED' and ($db{bootloader}->{vbr} // '') ne 'UNDEFINED';
             &$launch_gfs() if not $launched_gfs;
-            $db{bootloader} = __get_grubx_file_hash();
+            __get_mbr_vbr_hash($db{bootloader});
         } elsif ($entry eq 'files') {
             &$launch_gfs() if keys %{$db{$entry}} and not $launched_gfs;
             foreach my $partition (keys %{$db{$entry}}) {

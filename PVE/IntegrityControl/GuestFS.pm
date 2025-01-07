@@ -144,10 +144,15 @@ sub find_bootable_partition {
     my @parts = $guestfs_handle->part_list($dev);
 
     foreach my $part (@parts) {
-        return "$dev$part->{part_num}" if $guestfs_handle->part_get_bootable($dev, $part->{part_num});
+        return $part if $guestfs_handle->part_get_bootable($dev, $part->{part_num});
     }
 
     die "No bootable partition was found\n";
+}
+
+sub part_get_parttype {
+    my $dev = shift;
+    return $guestfs_handle->part_get_parttype($dev);
 }
 
 sub list_devices {
@@ -158,6 +163,11 @@ sub list_devices {
 sub read {
     my ($path) = @_;
     return $guestfs_handle->read_file($path);
+}
+
+sub pread_device {
+    my ($dev, $count, $offset) = @_;
+    return $guestfs_handle->pread_device($dev, $count, $offset);
 }
 
 sub drop_caches {

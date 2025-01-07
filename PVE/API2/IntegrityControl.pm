@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 use DDP;
-use PVE::JSONSchema;
+use PVE::JSONSchema qw(parse_property_string);
 use PVE::QemuConfig;
 use PVE::QemuServer;
 use PVE::Storage;
@@ -138,15 +138,38 @@ PVE::JSONSchema::register_format('pve-ic-file', sub {
         return $ic_file;
     }
     return undef if $noerr;
-    die "ERROR: Unable to parse file path for integrity control system '$ic_file'\n";
+    die "ERROR: Unable to parse file path for integrity control object: '$ic_file'\n";
 });
 
 PVE::JSONSchema::register_standard_option('pve-ic-files', {
-    description => "VM files for integrity control",
+    description => "Vm files for integrity control",
     type => 'string',
     format => 'pve-ic-file-list',
     format_description => 'file[;file...]',
 });
+
+my $ic_bootloader_fmt = {
+    mbr => {
+        type => 'boolean',
+        descritption => "Option to set MBR section as integrity control object",
+        default_key => 1,
+    },
+    vbr => {
+        type => 'boolean',
+        typetext => 'vbr',
+        descritption => "Option to set VBR section as integrity control object",
+        optional => 1,
+        default => 0,
+    },
+};
+PVE::JSONSchema::register_format('pve-ic-bootloader', $ic_bootloader_fmt);
+
+my $ic_bootloader_desc = {
+    type => 'string',
+    format => 'pve-ic-bootloader',
+    description => "Bootloader options for integrity control"
+};
+PVE::JSONSchema::register_standard_option('pve-ic-bootloader', $ic_bootloader_desc);
 
 __PACKAGE__->register_method ({
     name => 'ic_objects_set',
@@ -165,10 +188,8 @@ __PACKAGE__->register_method ({
                 type => 'boolean',
                 optional => 1,
             },
-            bootloader => {
-                type => 'boolean',
-                optional => 1,
-            }
+            bootloader => PVE::JSONSchema::get_standard_option('pve-ic-bootloader', {
+                optional => 1}),
         },
     },
     returns => {
@@ -178,43 +199,44 @@ __PACKAGE__->register_method ({
         my ($param) = @_;
 
         my $vmid = extract_param($param, 'vmid');
-        my $files = extract_param($param, 'files');
+        my $files_raw = extract_param($param, 'files');
         my $config = extract_param($param, 'config');
-        my $bootloader = extract_param($param, 'bootloader');
-
-        trace(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid");
-        trace(__PACKAGE__, "files: $files") if $files;
-        trace(__PACKAGE__, "config: $config") if $config;
-        trace(__PACKAGE__, "bootloader $bootloader") if $bootloader;
+        my $bootloader_raw = extract_param($param, 'bootloader');
 
         my $check = PVE::QemuServer::check_running($vmid);
         die "ERROR: Vm $vmid is running\n" if $check;
 
-        my %ic_files_hash;
+        my @files = PVE::Tools::split_list($files_raw) if $files_raw;
+        my $bootloader = parse_property_string('pve-ic-bootloader', $bootloader_raw) if $bootloader_raw;
 
-        if ($files) {
-            my @ic_files_list = PVE::Tools::split_list($files);
+        trace(__PACKAGE__, "\"set-objects\" was called with params vmid:$vmid");
+        trace(__PACKAGE__, "files: " . np(@files)) if @files;
+        trace(__PACKAGE__, "config: $config") if $config;
+        trace(__PACKAGE__, "bootloader: " . np($bootloader)) if $bootloader;
 
-            foreach my $file_location (sort @ic_files_list) {
+        my $files = {};
+
+        if (@files) {
+            foreach my $file_location (sort @files) {
                 my ($partition, $path) = split(':', $file_location);
-                push(@{$ic_files_hash{$partition}}, $path);
+                push(@{$files->{$partition}}, $path);
             }
         }
 
-        __set_ic_objects($vmid, \%ic_files_hash, $config, $bootloader);
+        __set_ic_objects($vmid, $files, $config, $bootloader);
         return;
     }
 });
 
 sub __set_ic_objects {
-    my ($vmid, $ic_files, $config, $bootloader) = @_;
+    my ($vmid, $files, $config, $bootloader) = @_;
 
     trace(__PACKAGE__, "\"__set_ic_obects\" was called");
 
     my $db = PVE::IntegrityControl::DB::load_or_create($vmid);
 
-    foreach my $partition (sort keys %$ic_files) {
-        foreach my $path (sort @{$ic_files->{$partition}}) {
+    foreach my $partition (sort keys %$files) {
+        foreach my $path (sort @{$files->{$partition}}) {
             die "ERROR: Integrity control object redefinition [partition: $partition, path: $path]\n"
             if exists $db->{files}->{$partition}->{$path};
             $db->{files}->{$partition}->{$path} = 'UNDEFINED';
@@ -228,7 +250,8 @@ sub __set_ic_objects {
 
     if ($bootloader) {
         die "ERROR: Integrity control object redefinition [bootloader]\n" if exists $db->{bootloader};
-        $db->{bootloader} = 'UNDEFINED';
+        $db->{bootloader}->{mbr} = 'UNDEFINED' if $bootloader->{mbr};
+        $db->{bootloader}->{vbr} = 'UNDEFINED' if $bootloader->{vbr};
     }
 
     PVE::IntegrityControl::DB::write($vmid, $db);
@@ -236,7 +259,7 @@ sub __set_ic_objects {
     eval { PVE::IntegrityControl::Checker::fill_db($vmid); };
     if (my $err = $@) {
         info(__PACKAGE__, "Error occured while adding new objects: $err");
-        __unset_ic_objects($vmid, $ic_files, $config, $bootloader);
+        __unset_ic_objects($vmid, $files, $config, $bootloader);
         die $err;
     }
 }
@@ -258,10 +281,8 @@ __PACKAGE__->register_method ({
                 type => 'boolean',
                 optional => 1,
             },
-            bootloader => {
-                type => 'boolean',
-                optional => 1,
-            }
+            bootloader => PVE::JSONSchema::get_standard_option('pve-ic-bootloader', {
+                optional => 1}),
         },
     },
     returns => {
@@ -312,16 +333,23 @@ sub __unset_ic_objects {
     if ($bootloader) {
         die "ERROR: Integrity control object was not set earlier: [bootloader]\n"
         if !exists $db->{bootloader};
-        delete $db->{bootloader};
+        delete $db->{bootloader}->{mbr} if exists $db->{bootloader}->{mbr};
+        delete $db->{bootloader}->{vbr} if exists $db->{bootloader}->{vbr};
+
+        delete $db->{bootloader} unless keys %{$db->{bootloader}};
     }
 
-    foreach my $partition (sort keys %$ic_files) {
-        foreach my $path (sort @{$ic_files->{$partition}}) {
-            die "ERROR: Integrity control object was not set earlier: [partition: $partition file path: $path]\n"
-            if !exists $db->{files}->{$partition}->{$path};
-            delete $db->{files}->{$partition}->{$path};
-            delete $db->{files}->{$partition} if keys %{$db->{files}->{$partition}} == 0;
+    if ($ic_files) {
+        foreach my $partition (sort keys %$ic_files) {
+            foreach my $path (sort @{$ic_files->{$partition}}) {
+                die "ERROR: Integrity control object was not set earlier: [partition: $partition file path: $path]\n"
+                if !exists $db->{files}->{$partition}->{$path};
+                delete $db->{files}->{$partition}->{$path};
+                delete $db->{files}->{$partition} if keys %{$db->{files}->{$partition}} == 0;
+            }
         }
+
+        delete $db->{files} unless keys %{$db->{files}};
     }
 
     PVE::IntegrityControl::DB::write($vmid, $db);
