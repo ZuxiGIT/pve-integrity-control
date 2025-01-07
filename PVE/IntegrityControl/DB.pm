@@ -90,16 +90,20 @@ sub __parse_ic_filedb {
 	    next if $line =~ m/^\s*$/;
 
         if ($line =~ m|^bootloader$|) {
-            foreach my $br (qw(mbr vbr)) {
+            my $exit = 0;
+            until($exit) {
                 my $bootloader_line = shift @lines;
+                last unless $bootloader_line;
                 debug(__PACKAGE__, "bootloader_line [$bootloader_line]");
-                if ($bootloader_line =~ m{^\s+$br (\w+)$}) {
-                    my $hash = $1;
+                if ($bootloader_line =~ m{^\s+(mbr|vbr) (\w+)$}) {
+                    my ($br, $hash) = ($1, $2);
+                    debug(__PACKAGE__, "br $br");
                     &$verify_hash_format("bootloader::$br", $hash);
                     $res->{bootloader}->{$br} = $hash;
                     next;
                 }
-                unshift @lines, $bootloader_line;
+                $exit = 1;
+                unshift @lines, $bootloader_line if $bootloader_line;
             }
             next;
         } elsif ($line =~ m|^config (\w+)$|){
@@ -121,6 +125,7 @@ sub __parse_ic_filedb {
                 } else {
                     # failed to parse file with hash, exitiing loop
                     $exit = 1;
+                    unshift @lines, $file_line if $file_line;
                 }
             }
             next;
