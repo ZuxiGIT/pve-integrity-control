@@ -130,6 +130,7 @@ sub __parse_ic_filedb {
         die "Wrong db file format for vm $vmid\n";
     }
 
+    trace(__PACKAGE__, "return from \"__parse_ic_filedb\"");
     return $res;
 }
 
@@ -225,6 +226,8 @@ sub load_or_create {
         PVE::IntegrityControl::DB::create($vmid);
         $db = {}
     }
+
+    trace(__PACKAGE__, "return from \"load_or_create\"");
     return $db;
 }
 
@@ -256,6 +259,7 @@ sub load {
     info(__PACKAGE__, "Successfully loaded integrity control database for vm $vmid");
     debug(__PACKAGE__, "Loaded integirty control db\n" . np($db));
 
+    trace(__PACKAGE__, "return from \"load\"");
     return $db;
 }
 
@@ -274,6 +278,8 @@ sub write {
     PVE::Cluster::cfs_write_file($dbpath, $db);
 
     info(__PACKAGE__, "Successfully wrote integrity control database for vm $vmid");
+
+    trace(__PACKAGE__, "return from \"write\"");
 }
 
 sub create {
@@ -284,6 +290,8 @@ sub create {
 
     PVE::IntegrityControl::DB::write($vmid, {});
     info(__PACKAGE__, "Successfully created integrity control database for vm $vmid");
+
+    trace(__PACKAGE__, "return from \"create\"");
 }
 
 sub sync{

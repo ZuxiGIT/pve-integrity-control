@@ -46,6 +46,8 @@ sub __init_openssl_gost_engine {
     $digest = Net::SSLeay::EVP_get_digestbyname("md_gost12_256");
 
     die "Failed to initialize GOST engine digest handler\n" if not $digest;
+
+    trace(__PACKAGE__, "return from \"__init_openssl_gost_engine\"");
 }
 
 sub __get_hash {
@@ -175,20 +177,23 @@ sub check {
     }
 
     info(__PACKAGE__, "Check passed successfully");
+
+    trace(__PACKAGE__, "return from \"check\"");
+
     return 0;
 }
 
 sub fill_db {
     my ($vmid) = @_;
 
-    __check_input($vmid);
+    __verify_input($vmid);
 
     trace(__PACKAGE__, "\"fill_db\" was called");
     trace(__PACKAGE__, "vmid:$vmid");
 
-    &$try(\&__init_openssl_gost_engine) if not $digest;
-
     my %db = %{PVE::IntegrityControl::DB::load($vmid)};
+
+    &$try(\&__init_openssl_gost_engine) if not $digest;
 
     my $launched_gfs = 0;
     my $launch_gfs = sub {
@@ -205,14 +210,19 @@ sub fill_db {
             &$launch_gfs() if not $launched_gfs;
             __get_mbr_vbr_hash($db{bootloader});
         } elsif ($entry eq 'files') {
-            &$launch_gfs() if keys %{$db{$entry}} and not $launched_gfs;
             foreach my $partition (keys %{$db{$entry}}) {
-                PVE::IntegrityControl::GuestFS::mount_partition($partition);
+                my $mounted = 0;
+                my $mount_partition = sub {
+                    &$launch_gfs() unless $launched_gfs;
+                    PVE::IntegrityControl::GuestFS::mount_partition($partition);
+                    $mounted = 1;
+                };
                 foreach my $path (keys %{$db{$entry}{$partition}}) {
                     next if $db{$entry}{$partition}{$path} ne 'UNDEFINED';
+                    &$mount_partition() unless $mounted;
                     $db{$entry}{$partition}{$path} = __get_hash(PVE::IntegrityControl::GuestFS::read($path));
                 }
-                PVE::IntegrityControl::GuestFS::umount_partition();
+                PVE::IntegrityControl::GuestFS::umount_partition() if $mounted;
             }
         }
     }
@@ -220,6 +230,8 @@ sub fill_db {
     PVE::IntegrityControl::DB::write($vmid, \%db);
 
     info(__PACKAGE__, "New objects were added successfully");
+
+    trace(__PACKAGE__, "return from \"fill_db\"");
 }
 
 1;

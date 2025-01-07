@@ -61,6 +61,9 @@ sub __get_vm_disks {
         $res{$bootdisk}->{format} = $format;
     }
     debug(__PACKAGE__, "vm $vmid disks:\n" . np(%res));
+
+    trace(__PACKAGE__, "return from \"__get_vm_disks\"");
+
     return %res;
 }
 
@@ -69,7 +72,7 @@ sub add_vm_disks {
 
     $ro = 1 if not defined $ro;
 
-    trace(__PACKAGE__, "\"mount_vm_disks\" was called");
+    trace(__PACKAGE__, "\"add_vm_disks\" was called");
     trace(__PACKAGE__, "vmid:$vmid");
     trace(__PACKAGE__, "readonly:$ro");
 
@@ -106,6 +109,8 @@ sub add_vm_disks {
     }
 
     debug(__PACKAGE__, "Successfully added disks for vm $vmid");
+
+    trace(__PACKAGE__, "return from \"add_vm_disks\"");
 }
 
 sub mount_partition {
