@@ -47,8 +47,8 @@ if ($phase eq 'pre-start') {
     my $total = Time::HiRes::time() - $time;
     info("PVE::IntegrityControl::Hookscript", "total: $total sec");
     if ($@) {
-        debug("PVE::IntegrityControl::Hookscript", "error: $@");
-        error("PVE::IntegrityControl::Hookscript", "vm start is not permitted");
+        info("PVE::IntegrityControl::Hookscript", $@);
+        info("PVE::IntegrityControl::Hookscript", "vm start is not permitted");
         exit(1);
     }
 

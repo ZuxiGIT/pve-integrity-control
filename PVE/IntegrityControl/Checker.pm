@@ -71,7 +71,7 @@ sub __check_config_file {
 
     if ($expected ne $hash) {
         error(__PACKAGE__, "Hash mismatch for config file: expected $expected, got $hash");
-        die "ERROR: hash mismatch for config file\n";
+        die "Hash mismatch for config file\n";
     }
 }
 
@@ -219,7 +219,7 @@ sub check {
                     my $hash = __get_hash($raw);
                     if ($expected ne $hash) {
                         error(__PACKAGE__, "Hash mismatch for $partition:$path: expected $expected, got $hash");
-                        die "ERROR: hash mismatch for $partition:$path\n";
+                        die "Hash mismatch for $partition:$path\n";
                     }
                 }
                 PVE::IntegrityControl::GuestFS::umount_partition() if $mounted;

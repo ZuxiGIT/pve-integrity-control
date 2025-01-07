@@ -15,7 +15,10 @@ my $try = sub {
     my $sub = shift;
 
     my $res;
-    eval { $res = &$sub(@_); };
+    eval {
+        no strict 'refs';
+        $res = &$sub(@_);
+    };
     if ($@) {
         error(__PACKAGE__, $@);
         die "Internal error occured\n";
@@ -24,6 +27,12 @@ my $try = sub {
 };
 
 my $guestfs_handle = Sys::Guestfs->new();
+
+my $try_gfs = sub {
+    my $sub = shift;
+
+    return &$try("Sys::Guestfs::$sub", $guestfs_handle, @_);
+};
 
 sub __get_vm_disks {
     my ($vmid) = @_;
@@ -88,17 +97,17 @@ sub add_vm_disks {
         my $disk_format = $disks{$disk}{format};
 
         debug(__PACKAGE__, "adding disk $disk_path");
-        $guestfs_handle->add_drive($disk_path, readonly => $ro, format => $disk_format);
+        &$try_gfs("add_drive", $disk_path, readonly => $ro, format => $disk_format);
         debug(__PACKAGE__, "added disk $disk_path");
     }
 
     debug(__PACKAGE__, "launching guestfs...");
-    $guestfs_handle->launch();
+    &$try_gfs("launch");
     debug(__PACKAGE__, "launched guestfs");
 
     my $dev = (list_devices())[0];
 
-    my $parttype = $guestfs_handle->part_get_parttype($dev);
+    my $parttype = &$try_gfs("part_get_parttype", $dev);
     debug(__PACKAGE__, "partition table type for $dev: $parttype");
 
     debug(__PACKAGE__, "Successfully added disks for vm $vmid");
@@ -116,9 +125,9 @@ sub mount_partition {
     trace(__PACKAGE__, "readonly:$ro");
 
     if ($ro) {
-        $guestfs_handle->mount_ro($partition, "/");
+        &$try_gfs("mount_ro", $partition, "/");
     } else {
-        $guestfs_handle->mount($partition, "/");
+        &$try_gfs("mount", $partition, "/");
     }
 
     debug(__PACKAGE__, "Successfully mounted partition $partition [ro? $ro]");
@@ -127,9 +136,9 @@ sub mount_partition {
 sub umount_partition {
     trace(__PACKAGE__, "\"umount_partition\" was called");
 
-    my $partition = ($guestfs_handle->mounts())[0];
+    my $partition = (&$try_gfs("mounts"))[0];
 
-    $guestfs_handle->umount("/");
+    &$try_gfs("umount", "/");
 
     debug(__PACKAGE__, "Successfully unmounted partition $partition");
 }
@@ -139,10 +148,10 @@ sub find_bootable_partition {
 
     my $dev = (list_devices())[0];
 
-    my @parts = $guestfs_handle->part_list($dev);
+    my @parts = &$try_gfs("part_list", $dev);
 
     foreach my $part (@parts) {
-        return $part if $guestfs_handle->part_get_bootable($dev, $part->{part_num});
+        return $part if &$try_gfs("part_get_bootable", $dev, $part->{part_num});
     }
 
     die "No bootable partition was found\n";
@@ -150,46 +159,46 @@ sub find_bootable_partition {
 
 sub part_get_parttype {
     my $dev = shift;
-    return $guestfs_handle->part_get_parttype($dev);
+    return &$try_gfs("part_get_parttype", $dev);
 }
 
 sub list_devices {
     trace(__PACKAGE__, "\"list_devices\" was called");
-    return $guestfs_handle->list_devices();
+    return &$try_gfs("list_devices");
 }
 
 sub read {
     my ($path) = @_;
-    return $guestfs_handle->read_file($path);
+    return &$try_gfs("read_file", $path);
 }
 
 sub pread_device {
     my ($dev, $count, $offset) = @_;
-    return $guestfs_handle->pread_device($dev, $count, $offset);
+    return &$try_gfs("pread_device", $dev, $count, $offset);
 }
 
 sub drop_caches {
     my $level = shift;
-    return $guestfs_handle->drop_caches($level);
+    return &$try_gfs("drop_caches", $level);
 }
 
 sub stat {
     my $path = shift;
 
-    return $guestfs_handle->statns($path);
+    return &$try_gfs("statns", $path);
 }
 
 sub find {
     my $dir = shift;
 
-    return $guestfs_handle->find($dir);
+    return &$try_gfs("find", $dir);
 }
 
 sub write {
     my $file = shift;
     my $content = shift;
 
-    return $guestfs_handle->write($file, $content);
+    return &$try_gfs("write", $file, $content);
 }
 
 1;
