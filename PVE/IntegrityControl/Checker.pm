@@ -86,9 +86,9 @@ sub __get_config_file_content {
     my $conf = PVE::QemuConfig->load_current_config($vmid, 1);
 
     # for sure
-    delete $conf->{lock} if $conf->{lock};
-    delete $conf->{integrity_control} if $conf->{integrity_control};
-    delete $conf->{digest} if $conf->{digest};
+    delete $conf->{lock} if defined $conf->{lock};
+    delete $conf->{integrity_control} if defined $conf->{integrity_control};
+    delete $conf->{digest} if defined $conf->{digest};
 
     debug(__PACKAGE__, "config file content:\n" . np($conf));
 
