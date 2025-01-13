@@ -36,7 +36,7 @@ bench-%:
 .PHONY:
 generate-testfiles:
 	apt install -y libtext-lorem-perl
-	perl scripts/generate_testfiles.pl $(vmid)
+	perl scripts/generate_testfiles.pl $(vmid1) $(vmid2)
 
 .PHONY: check-pve-version
 check-pve-version:

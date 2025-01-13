@@ -143,6 +143,22 @@ sub umount_partition {
     debug(__PACKAGE__, "Successfully unmounted partition $partition");
 }
 
+sub sync {
+    &$try_gfs("sync");
+}
+
+sub shutdown {
+    sync();
+    &$try_gfs("shutdown");
+}
+
+sub chmod {
+    my $mode = shift;
+    my $path = shift;
+
+    &$try_gfs("chmod", $mode, $path);
+}
+
 sub find_bootable_partition {
     trace(__PACKAGE__, "\"find_bootable_partition\" was called");
 
