@@ -95,6 +95,8 @@ __PACKAGE__->register_method ({
 
         die "ERROR: Failed to find 'snippets' dir\n" if $volume eq '';
 
+        info(__PACKAGE__, "Integrity control for vm $vmid was enabled");
+
         return PVE::API2::Qemu->update_vm({(node => $nodename, vmid => $vmid),
             integrity_control => 1,
             hookscript => "$volume:snippets/$hookscriptname"
@@ -123,6 +125,8 @@ __PACKAGE__->register_method ({
         my $vmid = extract_param($param, 'vmid');
 
         trace(__PACKAGE__, "\"disable\" was called with params vmid:$vmid");
+
+        info(__PACKAGE__, "Integrity control for vm $vmid was disabled");
 
         return PVE::API2::Qemu->update_vm({( node => $nodename, vmid => $vmid),
             integrity_control => 0,

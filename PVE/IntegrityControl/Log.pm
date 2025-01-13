@@ -27,8 +27,8 @@ sub __get_rotator {
         Count => 7,
         Gzip => 'lib',
         Post => sub {
-            my ($old, $new) = @_;
-            info(__PACKAGE__, "logfile was rotated: oldfile:$old, newfile:$new");
+            my ($new, $commpressed) = @_;
+            info(__PACKAGE__, "logfile was rotated [new journal: $new, old journal: $commpressed.gz]");
         },
     );
 }

@@ -38,7 +38,7 @@ use warnings;
 use DDP;
 use File::Copy;
 use PVE::Cluster;
-use PVE::IntegrityControl::Log qw(debug error info trace);
+use PVE::IntegrityControl::Log qw(debug error info trace warn);
 
 my $nodename = PVE::INotify::nodename();
 
@@ -226,8 +226,8 @@ sub load_or_create {
     my $db;
     eval { $db = PVE::IntegrityControl::DB::load($vmid, $node)};
     if ($@) {
-        info(__PACKAGE__, "There is no IntegrityControl DB for vm $vmid");
-        info(__PACKAGE__, "Creating new one for vm $vmid");
+        warn(__PACKAGE__, "There is no IntegrityControl DB for vm $vmid");
+        warn(__PACKAGE__, "Creating new one for vm $vmid");
         PVE::IntegrityControl::DB::create($vmid);
         $db = {}
     }
@@ -261,7 +261,7 @@ sub load {
         die "Failed to load Integrity control database file for vm $vmid\n";
     }
 
-    info(__PACKAGE__, "Successfully loaded integrity control database for vm $vmid");
+    debug(__PACKAGE__, "Successfully loaded integrity control database for vm $vmid");
     debug(__PACKAGE__, "Loaded integirty control db\n" . np($db));
 
     trace(__PACKAGE__, "return from \"load\"");
@@ -282,7 +282,7 @@ sub write {
 
     PVE::Cluster::cfs_write_file($dbpath, $db);
 
-    info(__PACKAGE__, "Successfully wrote integrity control database for vm $vmid");
+    debug(__PACKAGE__, "Successfully wrote integrity control database for vm $vmid");
 
     trace(__PACKAGE__, "return from \"write\"");
 }
@@ -294,7 +294,7 @@ sub create {
     trace(__PACKAGE__, "vmid:$vmid");
 
     PVE::IntegrityControl::DB::write($vmid, {});
-    info(__PACKAGE__, "Successfully created integrity control database for vm $vmid");
+    debug(__PACKAGE__, "Successfully created integrity control database for vm $vmid");
 
     trace(__PACKAGE__, "return from \"create\"");
 }
@@ -320,7 +320,7 @@ sub sync{
         error(__PACKAGE__, "Failed to synchronize db with $targetnode for $vmid");
         die "Failed to sync\n";
     }
-    info(__PACKAGE__, "Successfully synced integrity control database for vm $vmid with node $targetnode");
+    debug(__PACKAGE__, "Successfully synced integrity control database for vm $vmid with node $targetnode");
 }
 
 1;

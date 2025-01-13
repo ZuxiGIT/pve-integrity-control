@@ -5,7 +5,7 @@ use warnings;
 
 use Time::HiRes;
 use PVE::IntegrityControl::Checker;
-use PVE::IntegrityControl::Log qw(debug error info);
+use PVE::IntegrityControl::Log qw(debug error info warn);
 
 # First argument is the vmid
 my $vmid = shift;
@@ -34,10 +34,11 @@ if ($phase eq 'pre-start') {
     # First phase 'pre-start' will be executed before the guest
     # is started. Exiting with a code != 0 will abort the start
 
-    debug("PVE::IntegrityControl::Hookscript", "start of vm with vmid:$vmid during '$phase' phase was intercepted");
+    info("PVE::IntegrityControl::Hookscript", "Start of vm $vmid was intercepted");
+    debug("PVE::IntegrityControl::Hookscript", "Phase '$phase'");
 
     if ($ENV{PVE_MIGRATED_FROM}) {
-        debug("PVE::IntegrityControl::Hookscript", "vm was started during migration process, check is delayed to 'pre-start' phase during VM resuming process");
+        warn("PVE::IntegrityControl::Hookscript", "vm was started during migration process, check is delayed to 'pre-start' phase during VM resuming process");
         exit(0);
     }
     my $time = Time::HiRes::time();
@@ -45,7 +46,7 @@ if ($phase eq 'pre-start') {
         PVE::IntegrityControl::Checker::check($vmid);
     };
     my $total = Time::HiRes::time() - $time;
-    info("PVE::IntegrityControl::Hookscript", "total: $total sec");
+    debug("PVE::IntegrityControl::Hookscript", "total: $total sec");
     if ($@) {
         info("PVE::IntegrityControl::Hookscript", $@);
         info("PVE::IntegrityControl::Hookscript", "vm start is not permitted");
@@ -59,9 +60,9 @@ if ($phase eq 'pre-start') {
     # Second phase 'post-start' will be executed after the guest
     # successfully started.
     if ($ENV{PVE_MIGRATED_FROM}) {
-        info("PVE::IntegrityControl::Hookscript", "vm started, but is suspended until the end of disk and vmstate transfer");
+        warn("PVE::IntegrityControl::Hookscript", "vm started, but is suspended until the end of disk and vmstate transfer");
     } else {
-        debug("PVE::IntegrityControl::Hookscript", "vm started successfully");
+        info("PVE::IntegrityControl::Hookscript", "vm started successfully");
     }
 
     debug("PVE::IntegrityControl::Hookscript", "Phase '$phase': do nothing...");

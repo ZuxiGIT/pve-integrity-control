@@ -71,8 +71,10 @@ sub __check_config_file {
 
     if ($expected ne $hash) {
         error(__PACKAGE__, "Hash mismatch for config file: expected $expected, got $hash");
+        info(__PACKAGE__, "Check not passed");
         die "Hash mismatch for config file\n";
     }
+    info(__PACKAGE__, "Config file hash matched");
 }
 
 sub __get_config_file_content {
@@ -117,6 +119,7 @@ sub __check_mbr_vbr {
             my $expected = $mbr_vbr->{mbr};
             if ($expected ne $hash) {
                 error(__PACKAGE__, "Hash mismatch for MBR: expected $expected, got $hash");
+                info(__PACKAGE__, "Check not passed");
                 die "Hash mismatch for MBR\n";
             }
             info(__PACKAGE__, "MBR hash matched");
@@ -128,6 +131,7 @@ sub __check_mbr_vbr {
             my $expected = $mbr_vbr->{vbr};
             if ($expected ne $hash) {
                 error(__PACKAGE__, "Hash mismatch for VBR: expected $expected, got $hash");
+                info(__PACKAGE__, "Check not passed");
                 die "Hash mismatch for VBR\n";
             }
             info(__PACKAGE__, "VBR hash matched");
@@ -219,8 +223,10 @@ sub check {
                     my $hash = __get_hash($raw);
                     if ($expected ne $hash) {
                         error(__PACKAGE__, "Hash mismatch for $partition:$path: expected $expected, got $hash");
+                        info(__PACKAGE__, "Check not passed");
                         die "Hash mismatch for $partition:$path\n";
                     }
+                    info(__PACKAGE__, "File [partition: $partition, path: $path] hash matched");
                 }
                 PVE::IntegrityControl::GuestFS::umount_partition() if $mounted;
             }
@@ -254,12 +260,13 @@ sub fill_db {
 
     foreach my $entry (keys %db) {
         if ($entry eq 'config') {
-            next if $db{config} ne 'UNDEFINED';
-            $db{config} = __get_hash(&$try(\&__get_config_file_content, $vmid));
+            next if $db{$entry} ne 'UNDEFINED';
+            $db{$entry} = __get_hash(&$try(\&__get_config_file_content, $vmid));
+            info(__PACKAGE__, "Computed config file hash: $db{$entry}");
         } elsif ($entry eq 'bootloader') {
-            next if ($db{bootloader}->{mbr} // '') ne 'UNDEFINED' and ($db{bootloader}->{vbr} // '') ne 'UNDEFINED';
+            next if ($db{$entry}->{mbr} // '') ne 'UNDEFINED' and ($db{$entry}->{vbr} // '') ne 'UNDEFINED';
             &$launch_gfs() if not $launched_gfs;
-            __get_mbr_vbr_hash($db{bootloader});
+            __get_mbr_vbr_hash($db{$entry});
         } elsif ($entry eq 'files') {
             foreach my $partition (keys %{$db{$entry}}) {
                 my $mounted = 0;
@@ -272,6 +279,7 @@ sub fill_db {
                     next if $db{$entry}{$partition}{$path} ne 'UNDEFINED';
                     &$mount_partition() unless $mounted;
                     $db{$entry}{$partition}{$path} = __get_hash(PVE::IntegrityControl::GuestFS::read($path));
+                    info(__PACKAGE__, "Computed file [partitinon: $partition, path: $path] hash: $db{$entry}{$partition}{$path}");
                 }
                 PVE::IntegrityControl::GuestFS::umount_partition() if $mounted;
             }
