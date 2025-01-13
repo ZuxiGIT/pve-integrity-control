@@ -87,8 +87,6 @@ sub __get_config_file_content {
 
     # for sure
     delete $conf->{lock} if defined $conf->{lock};
-    delete $conf->{integrity_control} if defined $conf->{integrity_control};
-    delete $conf->{digest} if defined $conf->{digest};
 
     debug(__PACKAGE__, "config file content:\n" . np($conf));
 

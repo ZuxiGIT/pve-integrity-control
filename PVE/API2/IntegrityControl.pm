@@ -129,8 +129,7 @@ __PACKAGE__->register_method ({
         info(__PACKAGE__, "Integrity control for vm $vmid was disabled");
 
         return PVE::API2::Qemu->update_vm({( node => $nodename, vmid => $vmid),
-            integrity_control => 0,
-            delete => 'hookscript'
+            delete => 'hookscript,integrity_control'
         });
     }
 });
