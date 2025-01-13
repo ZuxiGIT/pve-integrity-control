@@ -187,7 +187,7 @@ sub check {
     eval {%db = %{PVE::IntegrityControl::DB::load($vmid)}};
     # FIXME
     if ($@) {
-        error(__PACKAGE__, "intergrity control objects are not defined");
+        error(__PACKAGE__, "Intergrity control objects are not defined");
         die $@;
     }
 
@@ -235,7 +235,9 @@ sub check {
 
     trace(__PACKAGE__, "return from \"check\"");
 
-    return 0;
+    PVE::IntegrityControl::GuestFS::shutdown();
+
+    return;
 }
 
 sub fill_db {
@@ -289,6 +291,8 @@ sub fill_db {
     info(__PACKAGE__, "New objects were added successfully");
 
     trace(__PACKAGE__, "return from \"fill_db\"");
+
+    return;
 }
 
 1;

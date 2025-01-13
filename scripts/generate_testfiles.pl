@@ -7,10 +7,10 @@ use Text::Lorem;
 use PVE::IntegrityControl::GuestFS;
 
 my $bios_vm = shift;
-die "--> bios_vm is not set\n" if not $bios_vm;
+die "bios_vm is not set\n" if not $bios_vm;
 
 my $eufi_vm = shift;
-die "--> eufi_vm is not set\n" if not $eufi_vm;
+die "eufi_vm is not set\n" if not $eufi_vm;
 
 sub generate_text {
     my $size = shift;
@@ -38,7 +38,7 @@ sub bios_vm_generate_files {
 
     PVE::IntegrityControl::GuestFS::shutdown();
 
-    print "--> wrote file '$filename' for vm $vmid\n";
+    print "Wrote file '$filename' for vm $vmid\n";
 }
 
 sub uefi_vm_generate_files {
@@ -62,16 +62,17 @@ sub uefi_vm_generate_files {
     for my $type (sort keys %partitions) {
         my $partition = $partitions{$type};
         PVE::IntegrityControl::GuestFS::mount_partition($partition, 0);
+        my $path;
         if ($type eq 'ext4') {
-            PVE::IntegrityControl::GuestFS::write("/home/$filename", $content);
-            PVE::IntegrityControl::GuestFS::chmod(0666, "/home/$filename");
+            $path = "/home/$filename";
         } else {
-            PVE::IntegrityControl::GuestFS::write("/$filename", $content);
-            PVE::IntegrityControl::GuestFS::chmod(0666, "/$filename");
+            $path = "/$filename";
         }
+        PVE::IntegrityControl::GuestFS::write("$path", $content);
+        PVE::IntegrityControl::GuestFS::chmod(0666, "$path");
         PVE::IntegrityControl::GuestFS::sync();
         PVE::IntegrityControl::GuestFS::umount_partition();
-        print "--> wrote file '$filename' for vm $vmid with $type fs\n";
+        print "Wrote file '$filename' for vm $vmid with $type fs\n";
     }
 
     PVE::IntegrityControl::GuestFS::shutdown();
@@ -80,7 +81,7 @@ sub uefi_vm_generate_files {
 
 my $text_size = 1024 * 1024; # 1 Mb
 my $text = generate_text $text_size;
-print "--> generated ~ $text_size bytes of text\n";
+print "generated ~ $text_size bytes of text\n";
 
 bios_vm_generate_files $bios_vm, "testfile", $text;
 uefi_vm_generate_files $eufi_vm, "testfile", $text;
