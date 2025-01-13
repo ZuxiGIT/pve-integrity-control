@@ -11,7 +11,7 @@ use PVE::Storage;
 use PVE::Tools;
 
 my $vmid = shift;
-die "--> vmid is not set\n" if not $vmid;
+die "vmid is not set\n" if not $vmid;
 
 my $scfg = PVE::Storage::config();
 my $snippetsdir = '';
@@ -24,32 +24,41 @@ foreach my $id (sort keys %{$scfg->{ids}}) {
     last;
 }
 
-die "--> Failed to find 'snippets' dir\n" if $snippetsdir eq '';
-print "--> Snippet dir: $snippetsdir\n";
+die "Failed to find 'snippets' dir\n" if $snippetsdir eq '';
 
 my $hookscriptname = "ic-hookscript.pl";
 my $hookscriptpath = "$snippetsdir/$hookscriptname";
 
-print "--> hookscriptpath: $hookscriptpath\n";
 
 sub run_hookscript {
     local @ARGV = @_;
 
-    print "--> running script with params:\n", np(@ARGV), "\n";
+    print "\n";
+    print "running script with params:\n", np(@ARGV), "\n";
     my ($out, $err, $exit) = capture {
         run(EXIT_ANY, $^X, $hookscriptpath, @ARGV);
     };
 
     if ($exit == 255) {
         # script died
-        print "--> Got exception error: $err";
-    } elsif ($exit == 1) {
-        # script returned error
-        print "--> Got script error: check journal\n";
+        print "Got exception error: $err";
     } else {
-        print "--> Got result: check journal\n";
+        print "Return code: $exit. For details check journal\n";
     }
+    print "\n";
 }
+
+print qq|
+*************************************************************************************
+
+    hookscript path: $hookscriptpath
+
+    hookscript has two params:
+      1. vmid - integer (100 < vmid < 999999)
+      2. phase - string from ['pre-start', 'post-start', 'pre-stop', 'post-stop']
+
+*************************************************************************************
+|;
 
 # 1 parameter not a number
 run_hookscript "test", "test";

@@ -4,7 +4,7 @@ interceptor:
 
 .PHONY:
 checker:
-	perl $@.pl
+	perl $@.pl $(vmid)
 
 .PHONY:
 manager:
@@ -15,5 +15,5 @@ logger:
 	perl $@.pl
 
 .PHONY:
-bd:
+db:
 	perl $@.pl $(vmid)

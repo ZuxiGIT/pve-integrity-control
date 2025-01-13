@@ -12,7 +12,7 @@ use PVE::Tools;
 use PVE::IntegrityControl::DB;
 
 my $vmid = shift;
-die "--> vmid is not set\n" if not $vmid;
+die "vmid is not set\n" if not $vmid;
 
 my $scfg = PVE::Storage::config();
 my $snippetsdir = '';
@@ -25,40 +25,48 @@ foreach my $id (sort keys %{$scfg->{ids}}) {
     last;
 }
 
-die "--> Failed to find 'snippets' dir\n" if $snippetsdir eq '';
-print "--> Snippet dir: $snippetsdir\n";
+die "Failed to find 'snippets' dir\n" if $snippetsdir eq '';
 
 my $hookscriptname = "ic-hookscript.pl";
 my $hookscriptpath = "$snippetsdir/$hookscriptname";
 
-print "--> hookscriptpath: $hookscriptpath\n";
+
+print qq|
+*************************************************************************************
+
+    hookscript path: $hookscriptpath
+
+    hookscript has two return values:
+      0 - integrity control check passed
+      0 - integrity control check not passed
+
+*************************************************************************************
+|;
 
 sub run_hookscript {
+    print "\n";
+
     local @ARGV = @_;
 
-    print "--> running script with params:\n", np(@ARGV), "\n";
+    print "running script with params:\n", np(@ARGV), "\n";
     my ($out, $err, $exit) = capture {
         run(EXIT_ANY, $^X, $hookscriptpath, @ARGV);
     };
 
     if ($exit == 255) {
         # script died
-        print "--> Got exception error: $err";
-    } elsif ($exit == 1) {
-        # script returned error
-        print "--> Got result: exit code $exit\n";
-        print "--> Got script error: check journal\n";
+        print "Got exception error: $err";
     } else {
-        print "--> Got result: exit code $exit\n";
-        print "--> Got result: check journal\n";
+        print "Return code: $exit. For details check journal\n";
     }
+    print "\n";
 }
 
 sub corrupt_db {
     my $vmid = shift;
 
     my $hash = "1111111";
-    print "--> Corrupting database record 'config' with hash '$hash' value\n";
+    print "Corrupting database record 'config' with hash '$hash' value\n";
     my $db = PVE::IntegrityControl::DB::load($vmid);
 
     my $old_hash = $db->{config};
@@ -74,7 +82,7 @@ sub restore_db {
     my $vmid = shift;
     my $hash = shift;
 
-    print "--> Restoring database record 'config' with hash '$hash' value\n";
+    print "Restoring database record 'config' with hash '$hash' value\n";
     my $db = PVE::IntegrityControl::DB::load($vmid);
 
     $db->{config} = $hash;
