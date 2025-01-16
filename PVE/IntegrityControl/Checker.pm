@@ -258,15 +258,18 @@ sub fill_db {
         $launched_gfs = 1;
     };
 
+    my $new_obj = 0;
     foreach my $entry (keys %db) {
         if ($entry eq 'config') {
             next if $db{$entry} ne 'UNDEFINED';
             $db{$entry} = __get_hash(&$try(\&__get_config_file_content, $vmid));
             info(__PACKAGE__, "Computed config file hash: $db{$entry}");
+            $new_obj = 1;
         } elsif ($entry eq 'bootloader') {
             next if ($db{$entry}->{mbr} // '') ne 'UNDEFINED' and ($db{$entry}->{vbr} // '') ne 'UNDEFINED';
             &$launch_gfs() if not $launched_gfs;
             __get_mbr_vbr_hash($db{$entry});
+            $new_obj = 1;
         } elsif ($entry eq 'files') {
             foreach my $partition (keys %{$db{$entry}}) {
                 my $mounted = 0;
@@ -280,6 +283,7 @@ sub fill_db {
                     &$mount_partition() unless $mounted;
                     $db{$entry}{$partition}{$path} = __get_hash(PVE::IntegrityControl::GuestFS::read($path));
                     info(__PACKAGE__, "Computed file [partitinon: $partition, path: $path] hash: $db{$entry}{$partition}{$path}");
+                    $new_obj = 1;
                 }
                 PVE::IntegrityControl::GuestFS::umount_partition() if $mounted;
             }
@@ -288,7 +292,7 @@ sub fill_db {
 
     PVE::IntegrityControl::DB::write($vmid, \%db);
 
-    info(__PACKAGE__, "New objects were added successfully");
+    info(__PACKAGE__, "New objects were added successfully") if $new_obj;
 
     trace(__PACKAGE__, "return from \"fill_db\"");
 
