@@ -1,0 +1,106 @@
+[[cli_ic]]
+*ic* `<COMMAND> [ARGS] [OPTIONS]`
+
+[[cli_ic_disable]]
+*ic disable* `<vmid>`
+
+Disable integrity control for a VM.
+
+`<vmid>`: `<integer> (100 - 999999999)` ::
+
+The (unique) ID of the VM.
+
+[[cli_ic_enable]]
+*ic enable* `<vmid>`
+
+Enable integrity control for a VM.
+
+`<vmid>`: `<integer> (100 - 999999999)` ::
+
+The (unique) ID of the VM.
+
+[[cli_ic_get_db]]
+*ic get-db* `<vmid>`
+
+Get the integrity-control database for a VM.
+
+`<vmid>`: `<integer> (100 - 999999999)` ::
+
+The (unique) ID of the VM.
+
+[[cli_ic_open_journal]]
+*ic open-journal*
+
+Open the integrity-control journal.
+
+[[cli_ic_set_objects]]
+*ic set-objects* `<vmid>` `[OPTIONS]`
+
+Specify VM objects for integrity control.
+
+`<vmid>`: `<integer> (100 - 999999999)` ::
+
+The (unique) ID of the VM.
+
+`--bootloader` `[mbr=<1|0>] [,vbr=<1|0>]` ::
+
+Set MBR and/or VBR sections as integrity-control objects.
+
+`--config` `<boolean>` ::
+
+Set the VM configuration as an integrity-control object.
+
+`--files` `<string>` ::
+
+Guest files to protect. Each entry is `<partition>:<absolute-path>`; separate
+multiple entries with semicolons.
+
+[[cli_ic_start_new_journal]]
+*ic start-new-journal*
+
+Archive the current integrity-control journal and start a new one.
+
+[[cli_ic_status]]
+*ic status* `<vmid>`
+
+Check whether integrity control is enabled for a VM.
+
+`<vmid>`: `<integer> (100 - 999999999)` ::
+
+The (unique) ID of the VM.
+
+[[cli_ic_sync_db]]
+*ic sync-db* `<target>` `--vmid` `<vmid>`
+
+Synchronize the integrity-control database with another node.
+
+`<target>`: `<string>` ::
+
+Target node.
+
+`--vmid` `<integer> (100 - 999999999)` ::
+
+The (unique) ID of the VM.
+
+[[cli_ic_unset_objects]]
+*ic unset-objects* `<vmid>` `[OPTIONS]`
+
+Remove VM objects from integrity control.
+
+`<vmid>`: `<integer> (100 - 999999999)` ::
+
+The (unique) ID of the VM.
+
+`--bootloader` `[mbr=<1|0>] [,vbr=<1|0>]` ::
+
+Remove MBR and/or VBR sections from the integrity-control objects.
+
+`--config` `<boolean>` ::
+
+Remove the VM configuration from the integrity-control objects.
+
+`--files` `<string>` ::
+
+Guest files to remove. Each entry is `<partition>:<absolute-path>`; separate
+multiple entries with semicolons.
+

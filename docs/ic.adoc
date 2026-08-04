@@ -1,0 +1,150 @@
+ifdef::manvolnum[]
+ic(1)
+=====
+:pve-toplevel:
+
+NAME
+----
+
+ic - manage integrity control for QEMU virtual machines
+
+
+SYNOPSIS
+--------
+
+include::generated/ic.1-synopsis.adoc[]
+
+
+DESCRIPTION
+-----------
+endif::manvolnum[]
+
+ifndef::manvolnum[]
+Integrity Control for QEMU Virtual Machines
+===========================================
+:pve-toplevel:
+endif::manvolnum[]
+
+The `ic` command-line tool manages integrity control for QEMU virtual
+machines (VMs). Integrity control records a cryptographic baseline for selected
+VM objects and checks that baseline immediately before the VM starts. If an
+object does not match its recorded hash, the start is denied.
+
+The protected objects can be guest files, the Proxmox VE VM configuration, and
+legacy boot records. Guest disks are accessed read-only through libguestfs.
+The checker uses the OpenSSL GOST `md_gost12_256` digest.
+
+
+[[ic_enable_integrity_control]]
+Enabling Integrity Control
+--------------------------
+
+Enable integrity control only after the hook script has been installed on a
+storage configured for `snippets` content. The installation helper selects the
+first eligible storage:
+
+    make install_hookscript
+
+To enable checking for a VM, run:
+
+    ic enable 101
+
+This adds the `integrity_control` VM configuration option and assigns the
+`ic-hookscript.pl` hook script. A VM that already has a hook script cannot be
+enabled, because integrity control does not replace existing hooks.
+
+At the `pre-start` hook phase, the hook script reads the VM's baseline and
+checks every selected object. A failed check exits with a non-zero status and
+prevents the VM from starting. Integrity control is skipped for the initial
+start step of a migration; it is checked when the migrated VM is resumed.
+
+
+[[ic_select_objects]]
+Selecting Integrity Objects
+---------------------------
+
+The VM must be stopped when objects are added to its baseline. Add the Proxmox
+VE VM configuration with `--config`, guest files with `--files`, and boot
+records with `--bootloader`.
+
+For example, to record the configuration and two files from the guest's first
+partition:
+
+    ic set-objects 101 --config \
+        --files '/dev/sda1:/etc/passwd;/dev/sda1:/etc/ssh/sshd_config'
+
+Each file location is a guest partition followed by a colon and the absolute
+path inside that partition. Separate multiple file locations with semicolons.
+The supplied partition name must be the device name visible to libguestfs.
+
+Objects are calculated and stored immediately. Re-adding an object already in
+the baseline is an error. To accept an authorized change, remove the affected
+object and add it again while the VM is stopped:
+
+    ic unset-objects 101 --files '/dev/sda1:/etc/ssh/sshd_config'
+    ic set-objects 101 --files '/dev/sda1:/etc/ssh/sshd_config'
+
+
+[[ic_boot_records]]
+Boot Records
+------------
+
+The `--bootloader` option can protect the master boot record (MBR), the volume
+boot record (VBR), or both:
+
+    ic set-objects 101 --bootloader 'mbr=1,vbr=1'
+
+Boot-record integrity checking supports only MBR (`msdos`) partition tables.
+VBR checking also requires a partition marked as bootable. GPT boot structures
+are not supported.
+
+
+[[ic_database_and_migration]]
+Baseline Database and Migration
+-------------------------------
+
+Baselines are stored as node-specific files in the Proxmox cluster filesystem:
+
+    /etc/pve/nodes/<node>/qemu-server/integrity-control/<vmid>.conf
+
+Use `ic get-db <vmid>` to inspect the recorded hashes. Before moving an enabled
+VM to another node, synchronize its baseline to that node:
+
+    ic sync-db pve-node2 --vmid 101
+
+The target node must be a cluster member, must differ from the local node, and
+the cluster must have quorum.
+
+
+[[ic_journal]]
+Journal
+-------
+
+Integrity-control operations and check results are logged to:
+
+    /var/log/pve-integrity-control/journal.log
+
+Open the journal with `ic open-journal`. Start a new journal and archive the
+current one with `ic start-new-journal`.
+
+
+[[ic_limitations_security]]
+Limitations and Security Model
+------------------------------
+
+Integrity control checks only the selected file contents, rendered VM
+configuration, and optional legacy boot records. It does not check file
+metadata, directory contents, non-selected files, or GPT boot structures. The
+current implementation supports VMs with one boot disk.
+
+The baseline database is not signed or externally attested. An actor able to
+change both the VM disks and the Proxmox cluster filesystem can also replace
+the recorded baseline. Integrity control is therefore a start-time change
+detector, not a defense against a fully privileged host or cluster
+administrator.
+
+ifdef::manvolnum[]
+ifndef::localdocs[]
+include::pve-copyright.adoc[]
+endif::localdocs[]
+endif::manvolnum[]

@@ -5,6 +5,10 @@ DESTDIR=
 PREFIX=/usr
 SBINDIR=$(PREFIX)/sbin
 LIBDIR=$(PREFIX)/lib/$(PACKAGE)
+DOCDIR=$(PREFIX)/share/doc/$(PACKAGE)
+MAN1DIR=$(PREFIX)/share/man/man1
+DOCBUILDDIR=docs/build
+ASCIIDOCTOR ?= asciidoctor
 export PERLDIR=$(PREFIX)/share/perl5
 PERLINCDIR=$(PERLDIR)/asm-x86_64
 
@@ -12,6 +16,9 @@ PERLINCDIR=$(PERLDIR)/asm-x86_64
 all:
 
 PKGSOURCES=ic
+DOCSOURCES=docs/ic.adoc docs/generated/ic.1-synopsis.adoc
+DOCMANPAGE=$(DOCBUILDDIR)/ic.1
+DOCHTML=$(DOCBUILDDIR)/ic.html
 
 .PHONY: install_hookscript
 install_hookscript:
@@ -24,6 +31,29 @@ install: $(PKGSOURCES) install_hookscript
 	install -d $(DESTDIR)/usr/share/$(PACKAGE)
 	$(MAKE) -C PVE install
 	install -m 0755 ic $(DESTDIR)$(SBINDIR)
+
+.PHONY: install-docs
+install-docs: docs $(DOCSOURCES)
+	install -d $(DESTDIR)$(DOCDIR)/generated
+	install -d $(DESTDIR)$(MAN1DIR)
+	install -m 0644 docs/ic.adoc $(DESTDIR)$(DOCDIR)/ic.adoc
+	install -m 0644 docs/generated/ic.1-synopsis.adoc $(DESTDIR)$(DOCDIR)/generated/
+	install -m 0644 $(DOCHTML) $(DESTDIR)$(DOCDIR)/ic.html
+	install -m 0644 $(DOCMANPAGE) $(DESTDIR)$(MAN1DIR)/ic.1
+
+.PHONY: docs
+docs: $(DOCMANPAGE) $(DOCHTML)
+
+$(DOCBUILDDIR):
+	mkdir -p $@
+
+$(DOCMANPAGE): $(DOCSOURCES) | $(DOCBUILDDIR)
+	@command -v $(ASCIIDOCTOR) >/dev/null || { echo "ERROR: install asciidoctor to build documentation"; exit 1; }
+	$(ASCIIDOCTOR) --backend manpage --attribute manvolnum=1 --attribute localdocs=1 --out-file $@ docs/ic.adoc
+
+$(DOCHTML): $(DOCSOURCES) | $(DOCBUILDDIR)
+	@command -v $(ASCIIDOCTOR) >/dev/null || { echo "ERROR: install asciidoctor to build documentation"; exit 1; }
+	$(ASCIIDOCTOR) --backend html5 --attribute toc --attribute localdocs=1 --out-file $@ docs/ic.adoc
 
 .PHONY:
 test-%:
