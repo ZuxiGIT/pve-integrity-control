@@ -46,8 +46,8 @@ ic set-objects 101 --config \
 
 ## Requirements
 
-- Proxmox VE with the project's required `pve-qemu-server` and `pve-cluster`
-  support patches.
+- Proxmox VE with the required `pve-qemu-server` and `pve-cluster` integration
+  patches described below.
 - A Proxmox storage configured with the `snippets` content type, used to store
   `ic-hookscript.pl`.
 - Perl dependencies: `libdata-printer-perl`, `libguestfs-perl`,
@@ -67,6 +67,21 @@ make install
 `make full-install` runs all three steps. These installation commands modify
 the Proxmox host and require administrative privileges. Review the scripts
 before running them in production.
+
+## Required Proxmox VE integration patches
+
+Integrity control extends two Proxmox VE components. A compatible installation
+must include the following changes.
+
+| Component | Required changes | Why IC needs them |
+| --- | --- | --- |
+| `pve-qemu-server` | Define the boolean VM configuration option `integrity_control`; allow it as a fast VM configuration update. | `ic enable` records that integrity control is enabled in the VM configuration. |
+| `pve-cluster` | Create and expose `nodes/<node>/qemu-server/integrity-control` in pmxcfs, including its convenience symlink. | IC stores each VM's baseline database in the Proxmox cluster filesystem. |
+| `pve-cluster` | Permit the integrity-control directory as a cluster configuration path and include its `<vmid>.conf` files in configuration version handling. | IC registers, reads, writes, and synchronizes baseline data safely through the cluster filesystem. |
+
+The current `make patches-install` helper obtains these changes from the
+project's `pve-ic-support` branches. Those branches are historical component
+snapshots, not version-checked minimal patches.
 
 ## Typical workflow
 
