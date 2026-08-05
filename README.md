@@ -125,17 +125,48 @@ ic sync-db pve-node2 --vmid 101
 
 The journal is written to `/var/log/pve-integrity-control/journal.log`.
 
-## Limitations and security model
+## Threat model
+
+Integrity control assumes that the Proxmox VE host is already a trusted and
+secured platform. The hypervisor, storage access, pmxcfs cluster filesystem,
+IC checker, hook script, and administrator-controlled baselines are part of
+that trusted control plane.
+
+The threat is an unauthorized persistent change to a VM's launch state. This
+can result from a previously compromised guest, offline disk modification,
+tampered backup or restore input, or an unauthorized VM configuration change.
+Before QEMU starts, IC runs outside the VM and compares administrator-selected
+assets with their approved baseline. A mismatch blocks the start.
+
+Depending on the selected policy, those assets are VM configuration, guest
+files such as boot and security components, and MBR/VBR sectors. This creates
+the following trust chain:
+
+```text
+Trusted PVE host
+  → external integrity check
+  → approved VM launch state
+  → VM starts
+  → in-guest security controls run
+```
+
+In-guest controls cannot make the initial trust decision because a modified
+guest could alter them before they run. IC provides that pre-launch decision
+outside the guest.
+
+The model does not cover compromise of the PVE host/control plane, changes
+made after the VM has started, or assets not selected for integrity checking.
+
+## Implementation limitations
 
 - The current implementation supports VMs with one boot disk.
 - Boot-record checks support MBR (`msdos`) partition tables only. GPT boot
   structures are not checked.
 - Integrity control checks selected file contents, not file metadata,
   directories, non-selected files, or the entire guest filesystem.
-- The baseline is not signed or externally attested. A fully privileged actor
-  who can modify both the guest disks and the Proxmox cluster filesystem can
-  alter the baseline. This project is a start-time change detector, not a
-  defense against a compromised Proxmox host or cluster administrator.
+- Baselines are not signed or externally attested. If the trusted PVE control
+  plane is compromised, an attacker can alter both the VM disks and baseline;
+  this is outside the threat model.
 
 ## Documentation
 
