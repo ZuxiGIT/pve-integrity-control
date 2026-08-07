@@ -43,14 +43,64 @@ my $try = sub {
     return $res;
 };
 
-my $guestfs_handle = Sys::Guestfs->new();
+our $guestfs_handle;
+
+sub __new_handle {
+    return Sys::Guestfs->new();
+}
+
+sub __ensure_handle {
+    $guestfs_handle //= __new_handle();
+    return $guestfs_handle;
+}
 
 my $try_gfs = sub {
     my $sub = shift;
     my $type = shift;
 
-    &$try("Sys::Guestfs::$sub", $type, $guestfs_handle, @_);
+    &$try("Sys::Guestfs::$sub", $type, __ensure_handle(), @_);
 };
+
+sub __cleanup_session {
+    return if !$guestfs_handle;
+
+    my $cleanup_error;
+    eval { &$try_gfs("umount_all", "VOID"); };
+    $cleanup_error = $@ if $@;
+
+    eval { &$try_gfs("shutdown", "VOID"); };
+    $cleanup_error //= $@ if $@;
+
+    $guestfs_handle = undef;
+    die $cleanup_error if $cleanup_error;
+}
+
+sub with_vm_disks {
+    my ($vmid, @args) = @_;
+    my $callback = pop @args;
+    die "Expected GuestFS callback\n" if ref($callback) ne "CODE";
+    die "Invalid GuestFS options\n" if @args % 2;
+    die "GuestFS session is already active\n" if $guestfs_handle;
+
+    my %opts = @args;
+    my $readonly = exists($opts{readonly}) ? $opts{readonly} : 1;
+
+    my ($result, $callback_error, $cleanup_error);
+
+    eval {
+        $guestfs_handle = __new_handle();
+        add_vm_disks($vmid, $readonly);
+        $result = $callback->();
+    };
+    $callback_error = $@;
+
+    eval { __cleanup_session(); };
+    $cleanup_error = $@;
+
+    die $callback_error if $callback_error;
+    die $cleanup_error if $cleanup_error;
+    return $result;
+}
 
 sub __get_vm_disks {
     my ($vmid) = @_;
@@ -166,8 +216,15 @@ sub sync {
 }
 
 sub shutdown {
-    sync();
-    &$try_gfs("shutdown", 'VOID');
+    return if !$guestfs_handle;
+
+    my $error;
+    eval { sync(); };
+    $error = $@ if $@;
+    eval { &$try_gfs("shutdown", 'VOID'); };
+    $error //= $@ if $@;
+    $guestfs_handle = undef;
+    die $error if $error;
 }
 
 sub chmod {
