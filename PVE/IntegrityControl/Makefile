@@ -1,4 +1,5 @@
 PERLSOURCES = 	\
+	Digest.pm	\
 	DB.pm		\
 	Log.pm		\
 	Checker.pm	\
