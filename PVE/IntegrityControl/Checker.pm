@@ -4,14 +4,13 @@ use strict;
 use warnings;
 
 use DDP;
-use Net::SSLeay;
 use PVE::QemuConfig;
 use PVE::Cluster;
 use PVE::IntegrityControl::DB;
 use PVE::IntegrityControl::GuestFS;
+use PVE::IntegrityControl::Digest;
 use PVE::IntegrityControl::Log qw(debug error info trace);
 
-my $digest = 0;
 
 my $try = sub {
     my $sub = shift;
@@ -26,36 +25,11 @@ my $try = sub {
 };
 
 sub __init_openssl_gost_engine {
-    trace(__PACKAGE__, "\"__init_openssl_gost_engine\" was called");
-
-    my $engine = Net::SSLeay::ENGINE_by_id("gost");
-
-    die "Failed to initialize GOST engine handler\n" if not $engine;
-    debug(__PACKAGE__, "GOST engine handler: $engine");
-
-    # 0x0080 magic constant means ENGINE_METHOD_DIGESTS
-    if (!Net::SSLeay::ENGINE_set_default($engine, 0x0080)) {
-        die "Faield to set up " . __PACKAGE__ . " environment\n";
-    }
-
-    Net::SSLeay::load_error_strings();
-    Net::SSLeay::OpenSSL_add_all_algorithms();
-    my $available_digests = Net::SSLeay::P_EVP_MD_list_all();
-
-    debug(__PACKAGE__, " available digests:\n " . np($available_digests));
-    $digest = Net::SSLeay::EVP_get_digestbyname("md_gost12_256");
-
-    die "Failed to initialize GOST engine digest handler\n" if not $digest;
-
-    trace(__PACKAGE__, "return from \"__init_openssl_gost_engine\"");
+    return PVE::IntegrityControl::Digest::init_openssl_gost_engine();
 }
 
 sub __get_hash {
-    my ($data) = @_;
-
-    trace(__PACKAGE__, "\"__get_hash\" was called");
-
-    return unpack('H*', Net::SSLeay::EVP_Digest($data, $digest));
+    return PVE::IntegrityControl::Digest::get_hash($_[0]);
 }
 
 sub __check_config_file {
@@ -175,48 +149,31 @@ sub __verify_input {
     die "Passed vmid [$vmid] is not valid\n" if not $vmid =~ m/^\d+$/;
 }
 
-sub check {
-    my ($vmid) = @_;
+sub __check_with_loaded_db {
+    my ($vmid, $db) = @_;
 
     __verify_input($vmid);
 
     trace(__PACKAGE__, "\"check\" was called");
     trace(__PACKAGE__, "vmid:$vmid");
 
-    my %db;
-    eval {%db = %{PVE::IntegrityControl::DB::load($vmid)}};
-    # FIXME
-    if ($@) {
-        error(__PACKAGE__, "Intergrity control objects are not defined");
-        die $@;
-    }
+    &$try(\&__init_openssl_gost_engine) if !PVE::IntegrityControl::Digest::is_initialized();
 
-    &$try(\&__init_openssl_gost_engine) if not $digest;
-
-    my $launched_gfs = 0;
-    my $launch_gfs = sub {
-        PVE::IntegrityControl::GuestFS::add_vm_disks($vmid);
-        $launched_gfs = 1;
-    };
-
-    foreach my $entry (sort keys %db) {
+    foreach my $entry (sort keys %$db) {
         if ($entry eq 'config') {
-            __check_config_file($vmid, $db{config});
+            __check_config_file($vmid, $db->{config});
         } elsif ($entry eq 'bootloader') {
-            &$launch_gfs() if not $launched_gfs;
-            __check_mbr_vbr($db{bootloader});
+            __check_mbr_vbr($db->{bootloader});
         } elsif ($entry eq 'files') {
-            &$launch_gfs() if keys %{$db{$entry}} and not $launched_gfs;
-            foreach my $partition (keys %{$db{$entry}}) {
+            foreach my $partition (keys %{$db->{$entry}}) {
                 my $mounted = 0;
                 my $mount_partition = sub {
-                    &$launch_gfs() unless $launched_gfs;
                     PVE::IntegrityControl::GuestFS::mount_partition($partition);
                     $mounted = 1;
                 };
-                foreach my $path (keys %{$db{$entry}{$partition}}) {
+                foreach my $path (keys %{$db->{$entry}->{$partition}}) {
                     &$mount_partition() unless $mounted;
-                    my $expected = $db{$entry}{$partition}{$path};
+                    my $expected = $db->{$entry}->{$partition}->{$path};
                     my $raw = PVE::IntegrityControl::GuestFS::read($path);
                     my $hash = __get_hash($raw);
                     if ($expected ne $hash) {
@@ -235,54 +192,42 @@ sub check {
 
     trace(__PACKAGE__, "return from \"check\"");
 
-    PVE::IntegrityControl::GuestFS::shutdown();
-
     return;
 }
 
-sub fill_db {
-    my ($vmid) = @_;
+sub __fill_db_with_loaded_db {
+    my ($vmid, $db) = @_;
 
     __verify_input($vmid);
 
     trace(__PACKAGE__, "\"fill_db\" was called");
     trace(__PACKAGE__, "vmid:$vmid");
 
-    my %db = %{PVE::IntegrityControl::DB::load($vmid)};
-
-    &$try(\&__init_openssl_gost_engine) if not $digest;
-
-    my $launched_gfs = 0;
-    my $launch_gfs = sub {
-        PVE::IntegrityControl::GuestFS::add_vm_disks($vmid);
-        $launched_gfs = 1;
-    };
+    &$try(\&__init_openssl_gost_engine) if !PVE::IntegrityControl::Digest::is_initialized();
 
     my $new_obj = 0;
-    foreach my $entry (keys %db) {
+    foreach my $entry (keys %$db) {
         if ($entry eq 'config') {
-            next if $db{$entry} ne 'UNDEFINED';
-            $db{$entry} = __get_hash(&$try(\&__get_config_file_content, $vmid));
-            info(__PACKAGE__, "Computed config file hash: $db{$entry}");
+            next if $db->{$entry} ne 'UNDEFINED';
+            $db->{$entry} = __get_hash(&$try(\&__get_config_file_content, $vmid));
+            info(__PACKAGE__, "Computed config file hash: $db->{$entry}");
             $new_obj = 1;
         } elsif ($entry eq 'bootloader') {
-            next if ($db{$entry}->{mbr} // '') ne 'UNDEFINED' and ($db{$entry}->{vbr} // '') ne 'UNDEFINED';
-            &$launch_gfs() if not $launched_gfs;
-            __get_mbr_vbr_hash($db{$entry});
+            next if ($db->{$entry}->{mbr} // '') ne 'UNDEFINED' and ($db->{$entry}->{vbr} // '') ne 'UNDEFINED';
+            __get_mbr_vbr_hash($db->{$entry});
             $new_obj = 1;
         } elsif ($entry eq 'files') {
-            foreach my $partition (keys %{$db{$entry}}) {
+            foreach my $partition (keys %{$db->{$entry}}) {
                 my $mounted = 0;
                 my $mount_partition = sub {
-                    &$launch_gfs() unless $launched_gfs;
                     PVE::IntegrityControl::GuestFS::mount_partition($partition);
                     $mounted = 1;
                 };
-                foreach my $path (keys %{$db{$entry}{$partition}}) {
-                    next if $db{$entry}{$partition}{$path} ne 'UNDEFINED';
+                foreach my $path (keys %{$db->{$entry}->{$partition}}) {
+                    next if $db->{$entry}->{$partition}->{$path} ne 'UNDEFINED';
                     &$mount_partition() unless $mounted;
-                    $db{$entry}{$partition}{$path} = __get_hash(PVE::IntegrityControl::GuestFS::read($path));
-                    info(__PACKAGE__, "Computed file [partitinon: $partition, path: $path] hash: $db{$entry}{$partition}{$path}");
+                    $db->{$entry}->{$partition}->{$path} = __get_hash(PVE::IntegrityControl::GuestFS::read($path));
+                    info(__PACKAGE__, "Computed file [partitinon: $partition, path: $path] hash: $db->{$entry}->{$partition}->{$path}");
                     $new_obj = 1;
                 }
                 PVE::IntegrityControl::GuestFS::umount_partition() if $mounted;
@@ -290,13 +235,71 @@ sub fill_db {
         }
     }
 
-    PVE::IntegrityControl::DB::write($vmid, \%db);
+    PVE::IntegrityControl::DB::write($vmid, $db);
 
     info(__PACKAGE__, "New objects were added successfully") if $new_obj;
 
     trace(__PACKAGE__, "return from \"fill_db\"");
 
     return;
+}
+
+
+sub __db_has_disk_objects {
+    my ($db) = @_;
+    return 1 if exists($db->{bootloader}) && keys %{$db->{bootloader}};
+    return 0 if !exists $db->{files};
+    return scalar grep { scalar keys %{ $db->{files}->{$_} } } keys %{ $db->{files} };
+}
+
+sub __db_is_population_required {
+    my ($db) = @_;
+
+    if (exists $db->{bootloader}) {
+        return 1 if grep { $_ eq 'UNDEFINED' } values %{$db->{bootloader}};
+    }
+
+    if (exists $db->{files}) {
+        foreach my $partition (keys %{$db->{files}}) {
+            return 1 if grep { $_ eq 'UNDEFINED' } values %{$db->{files}->{$partition}};
+        }
+    }
+
+    return 0;
+}
+
+sub check {
+    my ($vmid) = @_;
+    __verify_input($vmid);
+
+    my $db;
+    eval { $db = PVE::IntegrityControl::DB::load($vmid); };
+    if ($@) {
+        error(__PACKAGE__, "Intergrity control objects are not defined");
+        die $@;
+    }
+
+    if (__db_has_disk_objects($db)) {
+        return PVE::IntegrityControl::GuestFS::with_vm_disks(
+            $vmid, readonly => 1,
+            sub { return __check_with_loaded_db($vmid, $db); },
+        );
+    }
+    return __check_with_loaded_db($vmid, $db);
+}
+
+sub fill_db {
+    my ($vmid) = @_;
+    __verify_input($vmid);
+
+    my $db = PVE::IntegrityControl::DB::load($vmid);
+    if (__db_is_population_required($db)) {
+        return PVE::IntegrityControl::GuestFS::with_vm_disks(
+            $vmid, readonly => 1,
+            sub { return __fill_db_with_loaded_db($vmid, $db); },
+        );
+    }
+    return __fill_db_with_loaded_db($vmid, $db);
 }
 
 1;
