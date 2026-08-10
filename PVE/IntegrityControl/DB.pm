@@ -48,15 +48,6 @@ PVE::Cluster::cfs_register_file(
     \&__write_ic_filedb
 );
 
-sub extract {
-    my ($param, $key) = @_;
-
-    my $res = $param->{$key};
-    delete $param->{$key};
-
-    return $res;
-}
-
 sub __parse_ic_filedb {
     my ($filename, $raw, $strict) = @_;
 
@@ -164,37 +155,29 @@ sub __write_ic_filedb {
     my $raw = '';
     foreach my $entry (sort keys %$db) {
         if ($entry eq 'config') {
-            my $hash = extract($db, 'config');
+            my $hash = $db->{config};
             &$verify_hash_format('config file', $hash);
             $raw .= "config $hash\n";
         } elsif ($entry eq 'bootloader' ) {
             $raw .= "bootloader\n";
             foreach my $entry (keys %{$db->{bootloader}}) {
-                my $hash = extract($db->{bootloader}, $entry);
+                my $hash = $db->{bootloader}->{$entry};
                 &$verify_hash_format("bootloader::$entry", $hash);
                 $raw .= "\t$entry $hash\n";
             }
-            extract($db, 'bootloader');
         } elsif ($entry eq 'files') {
             $raw .= "files\n";
             foreach my $partition (sort keys %{$db->{$entry}}) {
                 foreach my $path (sort keys %{$db->{$entry}->{$partition}}) {
-                    my $hash = extract($db->{files}->{$partition}, $path);
+                    my $hash = $db->{files}->{$partition}->{$path};
                     &$verify_hash_format("$partition:$path", $hash);
                     $raw .= "\t$partition:$path $hash\n";
                 }
-                extract($db->{files}, $partition);
             }
-            extract($db, 'files');
         } else {
             error(__PACKAGE__, "Wrong db format, unexpected entry '$entry'");
             die "Wrong db format for vm $vmid\n";
         }
-    }
-
-    if (%{$db}) {
-        error(__PACKAGE__, "Wrong db format, unexpected entries:\n" . np($db));
-        die "Wrong db format for vm $vmid\n";
     }
 
     $raw =~ s/\s+$//;
