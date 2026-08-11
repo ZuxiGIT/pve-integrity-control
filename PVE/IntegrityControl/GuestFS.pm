@@ -38,7 +38,7 @@ my $try = sub {
     }
     if ($@) {
         error(__PACKAGE__, $@);
-        die "Internal error occured\n";
+        die "Internal error occurred\n";
     }
     return $res;
 };

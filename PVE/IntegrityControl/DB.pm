@@ -2,7 +2,7 @@ package PVE::IntegrityControl::DB;
 
 # To store IntegrityControl database PVE cluster fs (pmxfs) is used.
 # IntegrityControl database associated with some <vmid> VM is stored in
-# /etc/pve/nodes/<node>/qemu-server/intergrity-control directory under <vmid>.conf name.
+# /etc/pve/nodes/<node>/qemu-server/integrity-control directory under <vmid>.conf name.
 #
 # db file for some <vmid> VM has following structure:
 #
@@ -104,7 +104,7 @@ sub __parse_ic_filedb {
             next;
         } elsif ($line =~ m|^files$|) {
             my $exit = 0;
-            # loop for file array proccessing
+            # loop for file array processing
             until ($exit) {
                 my $file_line = shift @lines;
                 last unless $file_line;
@@ -114,7 +114,7 @@ sub __parse_ic_filedb {
                     &$verify_hash_format("$partition:$path", $hash);
                     $res->{files}->{$partition}->{$path} = $hash;
                 } else {
-                    # failed to parse file with hash, exitiing loop
+                    # failed to parse file with hash, exiting loop
                     $exit = 1;
                     unshift @lines, $file_line if $file_line;
                 }
@@ -245,7 +245,7 @@ sub load {
     }
 
     debug(__PACKAGE__, "Successfully loaded integrity control database for vm $vmid");
-    debug(__PACKAGE__, "Loaded integirty control db\n" . np($db));
+    debug(__PACKAGE__, "Loaded integrity control db\n" . np($db));
 
     trace(__PACKAGE__, "return from \"load\"");
     return $db;

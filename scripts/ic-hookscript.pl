@@ -21,7 +21,7 @@ sub check_params {
         die "Second parameter '$phase' is not a valid phase\n";
     }
 
-    # remainign params
+    # remaining params
     if (@ARGV != 0) {
         die "Expected 2 params, but got " . (2 + scalar(@ARGV)) . "\n";
     }

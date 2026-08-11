@@ -17,7 +17,7 @@ sub init_openssl_gost_engine {
     debug(__PACKAGE__, "GOST engine handler: $engine");
 
     if (!Net::SSLeay::ENGINE_set_default($engine, 0x0080)) {
-        die "Faield to set up " . __PACKAGE__ . " environment\n";
+        die "Failed to set up " . __PACKAGE__ . " environment\n";
     }
 
     Net::SSLeay::load_error_strings();

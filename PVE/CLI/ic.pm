@@ -83,7 +83,7 @@ __PACKAGE__->register_method ({
     name => 'get_db',
     path => 'get_db',
     method => 'GET',
-    description => 'Get integrity contol db for specified VM',
+    description => 'Get integrity control db for specified VM',
     protected => 1,
     proxyto => 'node',
     parameters => {

@@ -89,7 +89,7 @@ my $default_error = eval {
     return '';
 };
 $default_error = $@ if $@;
-like($default_error, qr/^Faield to set up PVE::IntegrityControl::Digest environment/, 'propagates engine setup failure');
+like($default_error, qr/^Failed to set up PVE::IntegrityControl::Digest environment/, 'propagates engine setup failure');
 ok(!PVE::IntegrityControl::Digest::is_initialized(), 'setup failure leaves Digest uninitialized');
 
 reset_fake_ssl();

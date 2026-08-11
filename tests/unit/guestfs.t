@@ -116,7 +116,7 @@ my $cleanup_error = eval {
     return '';
 };
 $cleanup_error = $@ if $@;
-is($cleanup_error, "Internal error occured\n", 'propagates cleanup failure');
+is($cleanup_error, "Internal error occurred\n", 'propagates cleanup failure');
 ok(!defined($PVE::IntegrityControl::GuestFS::guestfs_handle), 'clears handle after cleanup failure');
 
 reset_fake_guestfs();

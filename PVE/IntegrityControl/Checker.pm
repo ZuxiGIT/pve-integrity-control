@@ -19,7 +19,7 @@ my $try = sub {
     eval { $res = &$sub(@_); };
     if ($@) {
         error(__PACKAGE__, $@);
-        die "Internal error occured\n";
+        die "Internal error occurred\n";
     }
     return $res;
 };
@@ -227,7 +227,7 @@ sub __fill_db_with_loaded_db {
                     next if $db->{$entry}->{$partition}->{$path} ne 'UNDEFINED';
                     &$mount_partition() unless $mounted;
                     $db->{$entry}->{$partition}->{$path} = __get_hash(PVE::IntegrityControl::GuestFS::read($path));
-                    info(__PACKAGE__, "Computed file [partitinon: $partition, path: $path] hash: $db->{$entry}->{$partition}->{$path}");
+                    info(__PACKAGE__, "Computed file [partition: $partition, path: $path] hash: $db->{$entry}->{$partition}->{$path}");
                     $new_obj = 1;
                 }
                 PVE::IntegrityControl::GuestFS::umount_partition() if $mounted;
@@ -275,7 +275,7 @@ sub check {
     my $db;
     eval { $db = PVE::IntegrityControl::DB::load($vmid); };
     if ($@) {
-        error(__PACKAGE__, "Intergrity control objects are not defined");
+        error(__PACKAGE__, "Integrity control objects are not defined");
         die $@;
     }
 

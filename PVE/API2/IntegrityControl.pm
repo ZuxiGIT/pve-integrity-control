@@ -154,13 +154,13 @@ PVE::JSONSchema::register_standard_option('pve-ic-files', {
 my $ic_bootloader_fmt = {
     mbr => {
         type => 'boolean',
-        descritption => "Option to set MBR section as integrity control object",
+        description => "Option to set MBR section as integrity control object",
         default_key => 1,
     },
     vbr => {
         type => 'boolean',
         typetext => 'vbr',
-        descritption => "Option to set VBR section as integrity control object",
+        description => "Option to set VBR section as integrity control object",
         optional => 1,
         default => 0,
     },
@@ -178,7 +178,7 @@ __PACKAGE__->register_method ({
     name => 'ic_objects_set',
     path => '{vmid}/objects',
     method => 'PUT',
-    description => 'Specify VM files for integrity contol',
+    description => 'Specify VM files for integrity control',
     protected => 1,
     proxyto => 'node',
     parameters => {
@@ -234,7 +234,7 @@ __PACKAGE__->register_method ({
 sub __set_ic_objects {
     my ($vmid, $files, $config, $bootloader) = @_;
 
-    trace(__PACKAGE__, "\"__set_ic_obects\" was called");
+    trace(__PACKAGE__, "\"__set_ic_objects\" was called");
 
     my $db = PVE::IntegrityControl::DB::load_or_create($vmid);
 
@@ -261,7 +261,7 @@ sub __set_ic_objects {
 
     eval { PVE::IntegrityControl::Checker::fill_db($vmid); };
     if (my $err = $@) {
-        info(__PACKAGE__, "Error occured while adding new objects: $err");
+        info(__PACKAGE__, "Error occurred while adding new objects: $err");
         __unset_ic_objects($vmid, $files, $config, $bootloader);
         die $err;
     }
@@ -271,7 +271,7 @@ __PACKAGE__->register_method ({
     name => 'ic_objects_unset',
     path => '{vmid}/objects',
     method => 'DELETE',
-    description => 'Unspecify VM files for integrity contol',
+    description => 'Unspecify VM files for integrity control',
     protected => 1,
     proxyto => 'node',
     parameters => {
@@ -323,7 +323,7 @@ __PACKAGE__->register_method ({
 sub __unset_ic_objects {
     my ($vmid, $ic_files, $config, $bootloader) = @_;
 
-    trace(__PACKAGE__, "\"__unset_ic_obects\" was called");
+    trace(__PACKAGE__, "\"__unset_ic_objects\" was called");
 
     my $db = PVE::IntegrityControl::DB::load($vmid);
 
