@@ -1,3 +1,7 @@
+.PHONY: unit
+unit:
+	prove -I.. -v unit/*.t
+
 .PHONY:
 logger:
 	perl logger.pl

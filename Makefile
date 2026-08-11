@@ -59,6 +59,10 @@ $(DOCHTML): $(DOCSOURCES) | $(DOCBUILDDIR)
 test-%:
 	$(MAKE) -C tests $*
 
+.PHONY: tests
+tests:
+	$(MAKE) -C tests unit
+
 .PHONY:
 bench-%:
 	$(MAKE) -C bench $*
