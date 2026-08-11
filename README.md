@@ -27,6 +27,106 @@ owns the VM:
 /etc/pve/nodes/<node>/qemu-server/integrity-control/<vmid>.conf
 ```
 
+## Architecture overview
+
+The integrity check runs on the trusted Proxmox VE host, outside the guest.
+The CLI and API manage policy and baseline data; the hook script enforces that
+policy before QEMU starts.
+
+```mermaid
+flowchart LR
+    CLI[CLI] --> API[Integrity Control API]
+    Hook[Pre-start hook] --> Checker[Integrity checker]
+    API --> Checker
+    API --> DB[Integrity baseline database]
+    Checker --> DB
+    Checker --> DiskReader[VM disk reader]
+    Checker --> Digest[Digest service]
+```
+
+The main components have the following responsibilities:
+
+| Component | Responsibility |
+| --- | --- |
+| `PVE::API2::IntegrityControl` | Exposes enable, disable, object-management, and status operations. |
+| `PVE::IntegrityControl::Checker` | Coordinates baseline creation and verification. |
+| `PVE::IntegrityControl::GuestFS` | Opens the VM boot disk and reads guest files or boot sectors without starting the VM. |
+| `PVE::IntegrityControl::Digest` | Initializes the OpenSSL GOST engine and calculates `md_gost12_256` hashes. |
+| `PVE::IntegrityControl::DB` | Parses, serializes, reads, and writes per-VM baseline data in pmxcfs. |
+| `ic-hookscript.pl` | Invokes verification during the Proxmox `pre-start` hook phase and rejects a failed start. |
+
+### Integrity baseline creation
+
+Integrity baseline creation is an administrative operation and requires the VM
+to be stopped. Only hashes are stored; the contents of integrity-control
+objects are not copied.
+
+```mermaid
+flowchart LR
+    CLI[CLI] -->|set-objects| API[Integrity Control API]
+    API -->|VM must be stopped| Checker[Integrity checker]
+
+    Checker --> Config[VM configuration]
+    Checker --> DiskReader[VM disk reader]
+    DiskReader --> Objects[VM files and boot sectors]
+
+    Config --> Digest[Digest service]
+    Objects --> Digest
+    Digest --> DB[(Integrity baseline database)]
+```
+
+### Pre-start verification
+
+At `pre-start`, the checker recomputes every selected hash from the current VM
+state. QEMU is allowed to start only when all computed values match the stored
+baseline.
+
+```mermaid
+flowchart TD
+    Start[PVE requests VM start] --> Hook[Pre-start hook]
+    Hook --> Checker[Integrity checker]
+    Checker --> DB[(Integrity baseline database)]
+    Checker --> Config[VM configuration]
+    Checker --> DiskReader[VM disk reader]
+    Config --> Digest[Digest service]
+    DiskReader --> Digest
+    DB --> Compare{All hashes match?}
+    Digest --> Compare
+    Compare -->|Yes| Permit[Return success]
+    Permit --> Run[Start QEMU]
+    Compare -->|No| Reject[Return failure]
+    Reject --> Stop[Abort VM start]
+```
+
+### Baseline file schema
+
+The current pmxcfs representation is a compact, line-oriented manifest. A
+baseline can contain any combination of configuration, bootloader, and guest
+file hashes:
+
+```text
+config <gost-hash>
+bootloader
+    mbr <gost-hash>
+    vbr <gost-hash>
+files
+    /dev/<partition>:<absolute-path> <gost-hash>
+```
+
+For example:
+
+```text
+config 0123456789abcdef...
+bootloader
+    mbr 89abcdef01234567...
+files
+    /dev/sda1:/etc/passwd fedcba9876543210...
+    /dev/sda1:/etc/ssh/sshd_config 76543210fedcba98...
+```
+
+The ellipses above abbreviate hashes for readability; stored baselines contain
+the complete digest values.
+
 ## Protected objects
 
 The `ic set-objects` command can add any combination of:
