@@ -294,3 +294,9 @@ make install-docs DESTDIR=/package/staging/root
 
 The sources also supplement the Proxmox VE `pve-docs` build; see
 [`docs/README.md`](docs/README.md) for that integration workflow.
+
+## License
+
+This project is licensed under the GNU Affero General Public License, version
+3 or later (`AGPL-3.0-or-later`). See [`LICENSE`](LICENSE) for the complete
+terms.
